@@ -58,15 +58,23 @@ const getDashboardStats = async (req, res) => {
             $or: [{ owner: userId }, { members: userId }]
         });
 
-        // 2. Active Tasks (assigned to user, not done)
+        // Find all projects associated with the user to scope the tasks
+        const userProjectsList = await Project.find({
+            $or: [{ owner: userId }, { members: userId }]
+        }).select('_id');
+
+        const projectIds = userProjectsList.map(p => p._id);
+
+        // 2. Active Tasks (all tasks in user's projects that are not done)
+        // This gives a better overview of project workload than just assigned tasks
         const activeTasks = await Task.countDocuments({
-            assignees: userId,
+            project: { $in: projectIds },
             status: { $ne: 'done' }
         });
 
-        // 3. Completed Tasks (assigned to user, done)
+        // 3. Completed Tasks (all tasks in user's projects that are done)
         const completedTasks = await Task.countDocuments({
-            assignees: userId,
+            project: { $in: projectIds },
             status: 'done'
         });
 
@@ -83,10 +91,10 @@ const getDashboardStats = async (req, res) => {
         });
 
         // Subtract self from team count if desired, but "Team Members" usually implies size including/excluding self.
-        // Let's count everyone else.
-        if (uniqueMembers.has(userId.toString())) {
+        // We will include the user to show total team size involved.
+        /* if (uniqueMembers.has(userId.toString())) {
             uniqueMembers.delete(userId.toString());
-        }
+        } */
 
         res.json({
             totalProjects,

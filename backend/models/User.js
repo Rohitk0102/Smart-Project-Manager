@@ -20,6 +20,8 @@ const userSchema = mongoose.Schema({
         unique: true,
         sparse: true
     },
+    googleAccessToken: { type: String },
+    googleRefreshToken: { type: String },
     isAdmin: {
         type: Boolean,
         required: true,

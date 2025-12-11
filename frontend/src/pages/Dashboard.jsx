@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 const Dashboard = () => {
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const [projects, setProjects] = useState([]);
     const [stats, setStats] = useState({
         totalProjects: 0,
@@ -38,11 +39,10 @@ const Dashboard = () => {
             const { data } = await api.post('/projects', {
                 name: newProjectName,
                 description: newProjectDesc,
-                deadline: new Date(), // Default to today for now
+                deadline: new Date(),
                 members: []
             });
             setProjects([...projects, data]);
-            // Optimistically update project count
             setStats(prev => ({ ...prev, totalProjects: prev.totalProjects + 1 }));
             setShowModal(false);
             setNewProjectName('');
@@ -53,88 +53,90 @@ const Dashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-dark-bg text-white overflow-hidden">
-            {/* Sidebar */}
-            <aside className="w-16 md:w-64 bg-dark-card border-r border-slate-800 flex flex-col transition-all duration-300">
-                <div className="h-16 flex items-center justify-center md:justify-start px-6 border-b border-slate-800">
-                    <div className="w-8 h-8 bg-gradient-to-tr from-primary to-purple-500 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-primary/20">P</div>
-                    <span className="ml-3 font-bold text-lg tracking-tight hidden md:block">ProdMax</span>
+        <>
+            <motion.header
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="h-16 border-b border-slate-800/50 flex items-center justify-between px-8 bg-dark-bg/50 backdrop-blur-md sticky top-0 z-10"
+            >
+                <div>
+                    <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Welcome back, {user?.name.split(' ')[0]}</h2>
+                    <p className="text-xs text-slate-500">Here's what's happening today.</p>
                 </div>
-                <nav className="flex-1 p-4 space-y-2">
-                    {['Dashboard', 'My Tasks', 'Calendar', 'Team', 'Settings'].map((item) => (
-                        <div key={item} className={`p-3 rounded-xl cursor-pointer flex items-center transition-all duration-200 group ${item === 'Dashboard' ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                            <div className={`w-5 h-5 rounded-md ${item === 'Dashboard' ? 'bg-primary' : 'bg-slate-700 group-hover:bg-slate-600'} transition-colors`}></div>
-                            <span className="ml-3 font-medium hidden md:block">{item}</span>
+                <div className="flex items-center space-x-4">
+                    <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">🔔</div>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="px-4 py-2 bg-primary hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-primary/25 transition-all hover:scale-105 active:scale-95"
+                    >
+                        + New Project
+                    </button>
+                </div>
+            </motion.header>
+
+
+            <div className="flex-1 p-8 overflow-y-auto">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1, duration: 0.5 }}
+                    className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+                >
+                    {[
+                        { label: 'Total Projects', value: stats.totalProjects, color: 'from-blue-500 to-cyan-400' },
+                        { label: 'Active Tasks', value: stats.activeTasks, color: 'from-orange-500 to-amber-400' },
+                        { label: 'Completed', value: stats.completedTasks, color: 'from-green-500 to-emerald-400' },
+                        { label: 'Team Members', value: stats.teamMembers, color: 'from-purple-500 to-pink-400' }
+                    ].map((stat, i) => (
+                        <div key={i} className="bg-dark-card border border-slate-800 rounded-2xl p-6 relative overflow-hidden group hover:border-slate-700 transition-all">
+                            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${stat.color} opacity-5 rounded-bl-full group-hover:opacity-10 transition-opacity`}></div>
+                            <h3 className="text-slate-400 text-sm font-medium">{stat.label}</h3>
+                            <p className="text-3xl font-bold text-white mt-2">{stat.value}</p>
                         </div>
                     ))}
-                </nav>
-                <div className="p-4 border-t border-slate-800">
-                    <div className="p-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl mb-4 hidden md:block border border-slate-700">
-                        <h4 className="text-sm font-semibold text-white">Pro Plan</h4>
-                        <p className="text-xs text-slate-400 mt-1">Unlock AI Generator</p>
-                        <button className="mt-3 w-full py-2 bg-primary/20 hover:bg-primary/30 text-primary text-xs font-semibold rounded-lg transition-colors border border-primary/20">Upgrade</button>
-                    </div>
-                    <div onClick={logout} className="p-3 rounded-xl hover:bg-red-500/10 hover:text-red-400 text-slate-400 cursor-pointer flex items-center transition-colors">
-                        <div className="w-5 h-5 rounded-md bg-slate-700 group-hover:bg-red-500/20"></div>
-                        <span className="ml-3 font-medium hidden md:block">Logout</span>
-                    </div>
-                </div>
-            </aside>
+                </motion.div>
 
-            {/* Main Content */}
-            <main className="flex-1 flex flex-col overflow-hidden bg-[#0a0f1c]">
-                <header className="h-16 border-b border-slate-800/50 flex items-center justify-between px-8 bg-dark-bg/50 backdrop-blur-md sticky top-0 z-10">
-                    <div>
-                        <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Welcome back, {user?.name.split(' ')[0]}</h2>
-                        <p className="text-xs text-slate-500">Here's what's happening today.</p>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">🔔</div>
+                <motion.h3
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                    className="text-lg font-bold text-white mb-6 flex items-center"
+                >
+                    Your Projects <span className="ml-2 text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{projects.length}</span>
+                </motion.h3>
+
+                {projects.length === 0 ? (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="text-center text-slate-500 mt-20 p-10 border-2 border-dashed border-slate-800 rounded-2xl"
+                    >
+                        <h3 className="text-xl mb-2 font-semibold">No projects yet</h3>
+                        <p className="mb-6">Create your first project to get started with ProdMax.</p>
                         <button
                             onClick={() => setShowModal(true)}
-                            className="px-4 py-2 bg-primary hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-primary/25 transition-all hover:scale-105 active:scale-95"
+                            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors"
                         >
-                            + New Project
+                            Create Project
                         </button>
-                    </div>
-                </header>
-
-                <div className="flex-1 p-8 overflow-y-auto">
-                    {/* Stats Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                        {[
-                            { label: 'Total Projects', value: stats.totalProjects, color: 'from-blue-500 to-cyan-400' },
-                            { label: 'Active Tasks', value: stats.activeTasks, color: 'from-orange-500 to-amber-400' },
-                            { label: 'Completed', value: stats.completedTasks, color: 'from-green-500 to-emerald-400' },
-                            { label: 'Team Members', value: stats.teamMembers, color: 'from-purple-500 to-pink-400' }
-                        ].map((stat, i) => (
-                            <div key={i} className="bg-dark-card border border-slate-800 rounded-2xl p-6 relative overflow-hidden group hover:border-slate-700 transition-all">
-                                <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${stat.color} opacity-5 rounded-bl-full group-hover:opacity-10 transition-opacity`}></div>
-                                <h3 className="text-slate-400 text-sm font-medium">{stat.label}</h3>
-                                <p className="text-3xl font-bold text-white mt-2">{stat.value}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    <h3 className="text-lg font-bold text-white mb-6 flex items-center">
-                        Your Projects <span className="ml-2 text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{projects.length}</span>
-                    </h3>
-
-                    {projects.length === 0 ? (
-                        <div className="text-center text-slate-500 mt-20 p-10 border-2 border-dashed border-slate-800 rounded-2xl">
-                            <h3 className="text-xl mb-2 font-semibold">No projects yet</h3>
-                            <p className="mb-6">Create your first project to get started with ProdMax.</p>
-                            <button
-                                onClick={() => setShowModal(true)}
-                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors"
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    >
+                        {projects.map((project, index) => (
+                            <motion.div
+                                key={project._id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 * index + 0.3 }}
                             >
-                                Create Project
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {projects.map((project) => (
-                                <Link to={`/project/${project._id}`} key={project._id} className="block group">
+                                <Link to={`/project/${project._id}`} className="block group h-full">
                                     <div className="bg-dark-card border border-slate-800 rounded-2xl p-6 hover:border-primary/50 transition-all hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 h-full flex flex-col relative overflow-hidden">
                                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                         <div className="flex justify-between items-start mb-4">
@@ -163,11 +165,11 @@ const Dashboard = () => {
                                         </div>
                                     </div>
                                 </Link>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </main>
+                            </motion.div>
+                        ))}
+                    </motion.div>
+                )}
+            </div>
 
             {/* Create Project Modal */}
             {showModal && (
@@ -212,7 +214,7 @@ const Dashboard = () => {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 };
 

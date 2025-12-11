@@ -1,0 +1,118 @@
+/* Custom overrides for React Big Calendar in Dark Mode */
+.rbc-calendar {
+    font-family: inherit;
+    color: #e2e8f0; /* slate-200 */
+}
+
+.rbc-off-range-bg {
+    background-color: #0f172a; /* slate-900 */
+}
+
+.rbc-header {
+    border-bottom: 1px solid #1e293b; /* slate-800 */
+    padding: 10px;
+    font-weight: 600;
+    color: #94a3b8; /* slate-400 */
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.rbc-month-view, .rbc-time-view, .rbc-agenda-view {
+    border: 1px solid #1e293b; /* slate-800 */
+    border-radius: 0.75rem;
+    background-color: #0f172a; /* Custom dark bg */
+}
+
+.rbc-day-bg {
+    border-left: 1px solid #1e293b;
+}
+
+.rbc-month-row + .rbc-month-row {
+    border-top: 1px solid #1e293b;
+}
+
+.rbc-date-cell {
+    padding: 8px;
+    font-weight: 500;
+    color: #cbd5e1; /* slate-300 */
+}
+
+.rbc-off-range .rbc-date-cell {
+    color: #475569; /* slate-600 */
+}
+
+.rbc-today {
+    background-color: rgba(59, 130, 246, 0.1); /* primary/10 */
+}
+
+.rbc-toolbar {
+    margin-bottom: 1.5rem;
+}
+
+.rbc-toolbar button {
+    color: #cbd5e1;
+    border: 1px solid #334155; /* slate-700 */
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+}
+
+.rbc-toolbar button:hover {
+    background-color: #1e293b;
+    color: white;
+}
+
+.rbc-toolbar button.rbc-active {
+    background-color: #6366f1; /* primary */
+    color: white;
+    border-color: #6366f1;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.rbc-toolbar button:focus {
+    outline: none;
+    border-color: #818cf8;
+}
+
+.rbc-toolbar-label {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: white;
+}
+
+.rbc-time-header-content {
+    border-left: 1px solid #1e293b;
+}
+
+.rbc-time-content {
+    border-top: 1px solid #1e293b;
+}
+
+.rbc-timeslot-group {
+    border-bottom: 1px solid #1e293b;
+}
+
+.rbc-time-view-resources .rbc-time-gutter, .rbc-time-view-resources .rbc-time-header-gutter {
+    border-right: 1px solid #1e293b;
+    background-color: #0f172a;
+}
+.rbc-time-gutter .rbc-timeslot-group {
+    border-bottom: 1px solid #1e293b;
+}
+
+.rbc-time-column {
+    border-left: 1px solid #1e293b;
+}
+
+.rbc-event {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.rbc-show-more {
+    color: #94a3b8;
+    background-color: transparent;
+    font-weight: 500;
+    font-size: 0.8rem;
+}

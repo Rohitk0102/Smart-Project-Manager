@@ -13,6 +13,12 @@ passport.use(new GoogleStrategy({
             let user = await User.findOne({ googleId: profile.id });
 
             if (user) {
+                // Update tokens
+                user.googleAccessToken = accessToken;
+                if (refreshToken) {
+                    user.googleRefreshToken = refreshToken;
+                }
+                await user.save();
                 return done(null, user);
             }
 
@@ -21,7 +27,9 @@ passport.use(new GoogleStrategy({
 
             if (user) {
                 user.googleId = profile.id;
-                user.avatar = profile.photos[0].value;
+                user.avatar = profile.photos?.[0]?.value || user.avatar;
+                user.googleAccessToken = accessToken;
+                if (refreshToken) user.googleRefreshToken = refreshToken;
                 await user.save();
                 return done(null, user);
             }
@@ -31,8 +39,10 @@ passport.use(new GoogleStrategy({
                 googleId: profile.id,
                 name: profile.displayName,
                 email: profile.emails[0].value,
-                avatar: profile.photos[0].value,
-                role: 'Member' // Default role
+                avatar: profile.photos?.[0]?.value,
+                role: 'Member', // Default role
+                googleAccessToken: accessToken,
+                googleRefreshToken: refreshToken
             });
 
             return done(null, user);

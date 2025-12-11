@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { DndContext, closestCenter, DragOverlay, useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
@@ -60,7 +61,12 @@ const TaskCard = ({ task, onDelete, onUpdateStatus, style, innerRef, ...props })
             <div className="flex justify-between items-center text-xs pt-3 border-t border-slate-800/50">
                 <div className="flex items-center text-slate-500 gap-1">
                     <span>📅</span>
-                    <span>{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <span>
+                        {task.dueDate
+                            ? new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : 'No Date'
+                        }
+                    </span>
                 </div>
                 {task.assignees && task.assignees.length > 0 && (
                     <div className="flex -space-x-1.5">
@@ -165,6 +171,7 @@ const ProjectDetails = () => {
     const [newTaskTitle, setNewTaskTitle] = useState('');
     const [newTaskDesc, setNewTaskDesc] = useState('');
     const [newTaskPriority, setNewTaskPriority] = useState('medium');
+    const [newTaskDueDate, setNewTaskDueDate] = useState('');
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [taskToDelete, setTaskToDelete] = useState(null);
 
@@ -224,6 +231,7 @@ const ProjectDetails = () => {
         }
     };
 
+    const { user } = useAuth();
     const handleCreateTask = async (e) => {
         e.preventDefault();
         try {
@@ -233,7 +241,9 @@ const ProjectDetails = () => {
                 priority: newTaskPriority,
                 status: 'todo',
                 project: id,
-                order: tasks.filter(t => t.status === 'todo').length
+                order: tasks.filter(t => t.status === 'todo').length,
+                assignees: [user?._id],
+                dueDate: newTaskDueDate
             };
             const { data } = await api.post('/tasks', newTask);
             setTasks(prevTasks => [...prevTasks, data]);
@@ -241,6 +251,7 @@ const ProjectDetails = () => {
             setNewTaskTitle('');
             setNewTaskDesc('');
             setNewTaskPriority('Medium');
+            setNewTaskDueDate('');
         } catch (error) {
             console.error("Failed to create task", error);
         }
@@ -515,6 +526,17 @@ const ProjectDetails = () => {
                                         >
                                             ✨ AI Analyze
                                         </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-slate-400 mb-1">Due Date</label>
+                                    <div className="relative">
+                                        <input
+                                            type="datetime-local"
+                                            value={newTaskDueDate}
+                                            onChange={e => setNewTaskDueDate(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white focus:border-primary focus:outline-none"
+                                        />
                                     </div>
                                 </div>
                                 <div>

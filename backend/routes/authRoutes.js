@@ -18,7 +18,13 @@ const generateToken = (id) => {
 // Inline for simplicity with passport callback.
 const jwt = require('jsonwebtoken');
 
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
+// Request offline access to get a Refresh Token
+router.get('/google', passport.authenticate('google', {
+    scope: ['profile', 'email', 'https://www.googleapis.com/auth/calendar.events'],
+    accessType: 'offline',
+    prompt: 'consent', // Forces consent screen to ensure we get a refresh token
+    session: false
+}));
 
 router.get('/google/callback',
     passport.authenticate('google', { failureRedirect: 'http://localhost:5173/login', session: false }),

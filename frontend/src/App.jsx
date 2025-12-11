@@ -4,6 +4,9 @@ import Dashboard from './pages/Dashboard';
 import ProjectDetails from './pages/ProjectDetails';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import MyTasks from './pages/MyTasks';
+import Calendar from './pages/Calendar';
+import Layout from './components/Layout';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -20,7 +23,23 @@ function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/" element={
             <PrivateRoute>
-              <Dashboard />
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </PrivateRoute>
+          } />
+          <Route path="/my-tasks" element={
+            <PrivateRoute>
+              <Layout>
+                <MyTasks />
+              </Layout>
+            </PrivateRoute>
+          } />
+          <Route path="/calendar" element={
+            <PrivateRoute>
+              <Layout>
+                <Calendar />
+              </Layout>
             </PrivateRoute>
           } />
           <Route path="/project/:id" element={

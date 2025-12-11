@@ -36,7 +36,16 @@ const createTask = async (req, res) => {
         dueDate,
     });
 
-    res.status(201).json(task);
+    const { addToGoogleCalendar } = require('../services/googleCalendarService');
+
+    const populatedTask = await Task.findById(task._id).populate('assignees', 'name email avatar');
+
+    // Add to Google Calendar if due date exists and user is connected
+    if (dueDate) {
+        await addToGoogleCalendar(req.user._id, task);
+    }
+
+    res.status(201).json(populatedTask);
 };
 
 // @desc    Get tasks for a project
@@ -104,9 +113,26 @@ const reorderTasks = async (req, res) => {
     }
 };
 
+// @desc    Get all tasks for the logged in user across all projects
+// @route   GET /api/tasks/my-tasks
+// @access  Private
+const getMyTasks = async (req, res) => {
+    try {
+        const tasks = await Task.find({ assignees: req.user._id })
+            .populate('project', 'name description') // Populate project details
+            .populate('assignees', 'name email avatar')
+            .sort({ dueDate: 1 }); // Sort by due date ascending
+        res.json(tasks);
+    } catch (error) {
+        console.error("Failed to fetch user tasks", error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
     createTask,
     getTasksByProject,
+    getMyTasks,
     updateTaskStatus: updateTask,
     analyzeTask,
     deleteTask,
