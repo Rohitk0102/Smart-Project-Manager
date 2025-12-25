@@ -9,8 +9,7 @@ Instead of manually creating every single task, you can simply **chat with the A
 - **Automate:** Let the AI break down big goals into manageable tasks.
 - **Collaborate:** See updates instantly as your team works together.
 
-![Dashboard Preview](docs/screenshots/dashboard.png)
-*(Place your dashboard screenshot here)*
+[Dashboard Preview]<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 46 42 PM" src="https://github.com/user-attachments/assets/f8c303dd-b4dc-47d0-abd7-6d74495ff7a3" />
 
 ## 🚀 Key Features
 
@@ -120,15 +119,12 @@ npm run dev
 
 ## 📸 Screenshots
 
-| Kanban Board | AI Chat |
-|:---:|:---:|
-| ![Kanban](<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 24 27 PM" src="https://github.com/user-attachments/assets/5ce0f3e5-0090-4841-98b5-22ac8fdcac13" />) | ![AI Chat](<img width="443" height="572" alt="Screenshot 2025-12-25 at 8 41 52 PM" src="https://github.com/user-attachments/assets/cadacf50-2705-4737-abe2-f03431acd766" />) |
+[Kanban Board]<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 24 27 PM" src="https://github.com/user-attachments/assets/5ce0f3e5-0090-4841-98b5-22ac8fdcac13" />
 
-| Calendar View | Settings |
-|:---:|:---:|
-| ![Calendar](<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 44 35 PM" src="https://github.com/user-attachments/assets/5ec33c1f-f2b7-4a4c-9637-e31bf7401d2c" />) | ![Settings](<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 45 19 PM" src="https://github.com/user-attachments/assets/c45604ba-7326-478b-8f25-c7ce91b4c356" />) |
+[AI Chat]<img width="443" height="572" alt="Screenshot 2025-12-25 at 8 41 52 PM" src="https://github.com/user-attachments/assets/cadacf50-2705-4737-abe2-f03431acd766" /> 
 
-*(Note: Add actual screenshot files to a `docs/screenshots` folder in your repo to make these visible)*
+[Calendar]<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 44 35 PM" src="https://github.com/user-attachments/assets/5ec33c1f-f2b7-4a4c-9637-e31bf7401d2c" /> 
+[Settings]<img width="1710" height="1112" alt="Screenshot 2025-12-25 at 8 45 19 PM" src="https://github.com/user-attachments/assets/c45604ba-7326-478b-8f25-c7ce91b4c356" />
 
 ## 📄 API Documentation
 
