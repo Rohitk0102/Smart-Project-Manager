@@ -1,14 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-// require('dotenv').config();
+require('dotenv').config();
 const passport = require('passport');
 require('./config/passport'); // Passport config
 
 const app = express();
 
-if ('development' === 'development') {
-    app.use(require('morgan')('dev'));
+if (process.env.NODE_ENV === 'development') {
+    app.use(morgan('dev'));
 }
 
 app.set('trust proxy', 1); // Trust Render/Heroku proxy for HTTPS

@@ -1,10 +1,10 @@
-// require('dotenv').config();
+require('dotenv').config();
 const http = require('http');
 const app = require('./app');
 const { connectDB } = require('./config/db');
 const { initSocket } = require('./socket');
 
-const PORT = 5005;
+const PORT = process.env.PORT || 5005;
 const server = http.createServer(app);
 
 // Initialize Socket.io
@@ -15,4 +15,7 @@ connectDB().then(() => {
     server.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });
+}).catch((error) => {
+    console.error('Failed to connect to database:', error.message);
+    process.exit(1);
 });
