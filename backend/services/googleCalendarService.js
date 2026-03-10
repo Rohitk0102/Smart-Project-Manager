@@ -1,15 +1,13 @@
-// require('dotenv').config();
 const { google } = require('googleapis');
 const User = require('../models/User');
 require('dotenv').config();
 
-const clientId = process.env.GOOGLE_CLIENT_ID || "";
-console.log('[GoogleCalendarService] Initializing with Client ID:', clientId ? clientId.substring(0, 10) + '...' : 'UNDEFINED');
+const backendUrl = process.env.API_BASE_URL || 'http://localhost:5005';
 
 const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID || "",
     process.env.GOOGLE_CLIENT_SECRET || "",
-    "http://localhost:5005/api/auth/google/callback"
+    `${backendUrl}/api/integrations/google-calendar/callback`
 );
 
 const addToGoogleCalendar = async (userId, task) => {

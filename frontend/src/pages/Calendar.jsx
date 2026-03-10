@@ -26,7 +26,7 @@ const localizer = dateFnsLocalizer({
     locales,
 });
 
-const CustomToolbar = ({ label, onNavigate, onView, view, date, isGoogleConnected }) => {
+const CustomToolbar = ({ onNavigate, onView, view, date, isGoogleConnected, onConnectGoogle }) => {
     return (
         <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
             <div className="flex items-center gap-4">
@@ -106,7 +106,7 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date, isGoogleConnecte
                 </button>
                 {!isGoogleConnected && (
                     <button
-                        onClick={() => window.location.href = "http://localhost:5005/api/auth/google"}
+                        onClick={onConnectGoogle}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-500 hover:text-blue-500 transition-colors"
                     >
                         <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4" />
@@ -186,6 +186,19 @@ const Calendar = () => {
 
     const handleNavigate = (newDate) => {
         setDate(newDate);
+    };
+
+    const handleConnectGoogle = async () => {
+        try {
+            const { data } = await api.post('/integrations/google-calendar/connect-url', {
+                redirectPath: '/calendar',
+            });
+
+            window.location.href = data.url;
+        } catch (error) {
+            console.error('Failed to start Google Calendar connection', error);
+            alert(error.response?.data?.message || 'Failed to start Google Calendar connection');
+        }
     };
 
     // Helper functions for strict filtering
@@ -474,7 +487,14 @@ const Calendar = () => {
                         date={date}
                         onNavigate={handleNavigate}
                         components={{
-                            toolbar: props => <CustomToolbar {...props} date={date} isGoogleConnected={isGoogleConnected} />,
+                            toolbar: props => (
+                                <CustomToolbar
+                                    {...props}
+                                    date={date}
+                                    isGoogleConnected={isGoogleConnected}
+                                    onConnectGoogle={handleConnectGoogle}
+                                />
+                            ),
                             event: CustomEvent
                         }}
                         popup

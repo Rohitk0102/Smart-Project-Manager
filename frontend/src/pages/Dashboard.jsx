@@ -280,15 +280,6 @@ const Dashboard = () => {
                         <span className="tracking-wide relative z-10">New Project</span>
                     </button>
 
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 p-[1px] cursor-pointer ring-2 ring-transparent hover:ring-primary/50 transition-all">
-                        <div className="w-full h-full rounded-full bg-white dark:bg-[#050505] flex items-center justify-center">
-                            {user?.avatar ? (
-                                <img src={user.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                                <span className="font-bold text-slate-700 dark:text-white text-sm">{user?.name?.charAt(0) || 'U'}</span>
-                            )}
-                        </div>
-                    </div>
                 </div>
             </motion.header>
 

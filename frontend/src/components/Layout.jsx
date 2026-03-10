@@ -1,4 +1,5 @@
 // Enhanced Layout matching new Dashboard aesthetics
+import ClerkHeader from './ClerkHeader';
 import Sidebar from './Sidebar';
 
 const Layout = ({ children }) => {
@@ -14,7 +15,10 @@ const Layout = ({ children }) => {
             <Sidebar />
 
             <main className="flex-1 flex flex-col overflow-hidden relative z-10 bg-transparent backdrop-blur-[0px]">
-                {children}
+                <ClerkHeader compact />
+                <div className="flex-1 overflow-hidden">
+                    {children}
+                </div>
             </main>
         </div>
     );

@@ -1,11 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const { clerkMiddleware } = require('@clerk/express');
 require('dotenv').config();
-const passport = require('passport');
-require('./config/passport'); // Passport config
 
 const app = express();
+
+if (!process.env.CLERK_SECRET_KEY) {
+    console.warn('CLERK_SECRET_KEY is not set. Clerk-authenticated API routes will return setup errors until it is configured.');
+}
 
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));
@@ -14,7 +17,7 @@ if (process.env.NODE_ENV === 'development') {
 app.set('trust proxy', 1); // Trust Render/Heroku proxy for HTTPS
 app.use(cors());
 app.use(express.json());
-app.use(passport.initialize());
+app.use(clerkMiddleware());
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));

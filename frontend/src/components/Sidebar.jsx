@@ -8,7 +8,7 @@ import { RxDashboard } from 'react-icons/rx';
 import { FiCheckSquare, FiCalendar, FiUsers, FiSettings, FiLogOut, FiSun, FiMoon, FiLayers, FiAward } from 'react-icons/fi';
 
 const Sidebar = () => {
-    const { logout } = useAuth();
+    const { logout, user } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const location = useLocation();
 
