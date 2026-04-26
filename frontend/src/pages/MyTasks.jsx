@@ -95,7 +95,7 @@ const MyTasks = () => {
     );
 
     return (
-        <div className="h-screen bg-slate-50 dark:bg-[#0a0f1c] text-slate-900 dark:text-white transition-colors duration-300 flex flex-col overflow-hidden">
+        <div className="h-full bg-slate-50 dark:bg-[#0a0f1c] text-slate-900 dark:text-white transition-colors duration-300 flex flex-col overflow-hidden">
             {/* Header */}
             <header className="h-24 px-10 flex items-center justify-between bg-white/80 dark:bg-[#050505]/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5 shrink-0 z-20">
                 <div>

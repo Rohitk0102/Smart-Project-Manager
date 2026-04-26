@@ -1,10 +1,12 @@
 
 import { useState, useEffect } from 'react';
 import api from '../api';
-import { motion } from 'framer-motion';
-import { FiAward, FiTrendingUp, FiCheckCircle, FiStar, FiTarget, FiClock } from 'react-icons/fi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiAward, FiTrendingUp, FiCheckCircle, FiStar, FiTarget, FiClock, FiZap, FiLayout, FiActivity, FiShield, FiUser } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 
 const Leaderboard = () => {
+    const navigate = useNavigate();
     const [stats, setStats] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -18,17 +20,15 @@ const Leaderboard = () => {
                 const tasksResponses = await Promise.all(tasksPromises);
                 const allTasks = tasksResponses.flatMap(res => res.data);
 
-                // --- Calculate Scores & XP ---
                 const userScores = {};
                 const projectOwners = {};
 
-                // Map owners
                 projects.forEach(p => {
-                    if (p.owner) projectOwners[p._id] = p.owner._id;
+                    if (p.ownerId) projectOwners[p._id] = p.ownerId._id || p.ownerId;
                 });
 
-                // Init helper
                 const getOrInitUser = (user, userId) => {
+                    if (!userId) return null;
                     if (!userScores[userId]) {
                         userScores[userId] = {
                             member: user,
@@ -41,22 +41,13 @@ const Leaderboard = () => {
                     return userScores[userId];
                 };
 
-                // 1. Fetch ALL Users to ensure everyone is on the board
                 const { data: allUsers } = await api.get('/auth/users');
                 allUsers.forEach(u => {
                     getOrInitUser(u, u._id);
                 });
 
-                // Pre-fill from Projects (just in case 'users' endpoint misses something, though unlikely)
-                projects.forEach(p => {
-                    if (p.owner) getOrInitUser(p.owner, p.owner._id);
-                    if (p.members) p.members.forEach(m => getOrInitUser(m, m._id));
-                });
-
-                // Process Tasks
                 allTasks.forEach(task => {
-                    if (task.status === 'done') {
-                        // Time Range Logic (Simplified for UI demo, ideally backend supports strict filtering)
+                    if (task.status === 'completed') {
                         const taskDate = new Date(task.updatedAt);
                         const now = new Date();
                         const isThisWeek = (now - taskDate) < 7 * 24 * 60 * 60 * 1000;
@@ -68,46 +59,38 @@ const Leaderboard = () => {
                         const points = (task.priority || 'low').toLowerCase() === 'high' ? 20 :
                             (task.priority || 'low').toLowerCase() === 'medium' ? 10 : 5;
 
-                        const assignees = task.assignees || [];
-                        if (assignees.length > 0) {
-                            const pointsPerPerson = points / assignees.length;
-                            assignees.forEach(a => {
-                                const memberId = a._id || a;
-                                if (!a.name) return;
+                        const assignee = task.assignedTo;
+                        if (assignee) {
+                            const memberId = assignee._id || assignee;
+                            const userData = getOrInitUser(assignee, memberId);
+                            if (!userData) return;
 
-                                const userData = getOrInitUser(a, memberId);
+                            let finalPoints = points;
+                            const projectId = task.project._id || task.project;
+                            const ownerId = projectOwners[projectId];
 
-                                let finalPoints = pointsPerPerson;
-                                const projectId = task.project._id || task.project;
-                                const ownerId = projectOwners[projectId];
+                            if (ownerId && memberId === ownerId) {
+                                finalPoints += 2; 
+                            }
 
-                                if (ownerId && memberId === ownerId) {
-                                    finalPoints += 2; // Team Lead Bonus
-                                }
-
-                                userData.points += finalPoints;
-                                userData.tasksCompleted += 1;
-                                if ((task.priority || '').toLowerCase() === 'high') userData.highPriority += 1;
-                                userData.projectsCount.add(projectId);
-                            });
+                            userData.points += finalPoints;
+                            userData.tasksCompleted += 1;
+                            if ((task.priority || '').toLowerCase() === 'high') userData.highPriority += 1;
+                            userData.projectsCount.add(projectId);
                         }
                     }
                 });
 
-                // --- Process Badges & Levels ---
                 const sorted = Object.values(userScores)
                     .map(s => {
                         const points = Math.round(s.points * 10) / 10;
-                        const level = Math.floor(points / 100) + 1; // 100 pts per level
-                        const nextLevelThreshold = level * 100;
+                        const level = Math.floor(points / 100) + 1;
                         const progress = ((points - ((level - 1) * 100)) / 100) * 100;
 
-                        // Badges
                         const badges = [];
-                        if (s.highPriority >= 5) badges.push({ icon: '⚡', name: 'Blitz', color: 'text-yellow-400', bg: 'bg-yellow-400/10' });
-                        if (s.tasksCompleted >= 20) badges.push({ icon: '🛡️', name: 'Veteran', color: 'text-blue-400', bg: 'bg-blue-400/10' });
-                        if (points >= 200) badges.push({ icon: '🚀', name: 'Legend', color: 'text-purple-400', bg: 'bg-purple-400/10' });
-                        if (s.projectsCount.size >= 3) badges.push({ icon: '🌐', name: 'General', color: 'text-emerald-400', bg: 'bg-emerald-400/10' });
+                        if (s.highPriority >= 5) badges.push({ icon: '⚡', name: 'Blitz', color: 'text-yellow-400' });
+                        if (s.tasksCompleted >= 10) badges.push({ icon: '🛡️', name: 'Veteran', color: 'text-blue-400' });
+                        if (points >= 200) badges.push({ icon: '🚀', name: 'Legend', color: 'text-purple-400' });
 
                         return {
                             ...s,
@@ -120,27 +103,9 @@ const Leaderboard = () => {
                     })
                     .sort((a, b) => b.points - a.points);
 
-                // Add Rank Badges
-                if (sorted[0]) sorted[0].badges.unshift({ icon: '👑', name: 'Champion', color: 'text-amber-400', bg: 'bg-amber-400/10' });
-                if (sorted[1]) sorted[1].badges.unshift({ icon: '🥈', name: 'Runner Up', color: 'text-slate-400', bg: 'bg-slate-400/10' });
-                if (sorted[2]) sorted[2].badges.unshift({ icon: '🥉', name: 'Third', color: 'text-orange-400', bg: 'bg-orange-400/10' });
-
-                // Recent Activity Log
-                const activityLog = [];
-                allTasks.forEach(task => {
-                    if (task.status === 'done') {
-                        const taskDate = new Date(task.updatedAt);
-
-                        // Strict filters for log history to match current view stats
-                        if (timeRange === 'week' && (new Date() - taskDate) >= 7 * 24 * 60 * 60 * 1000) return;
-                        if (timeRange === 'month' && ((new Date().getMonth() !== taskDate.getMonth()) || (new Date().getFullYear() !== taskDate.getFullYear()))) return;
-                    }
-                });
-
-                // Re-calculating full activity log
                 const detailedLog = [];
                 allTasks.forEach(task => {
-                    if (task.status === 'done') {
+                    if (task.status === 'completed') {
                         const taskDate = new Date(task.updatedAt);
                         const now = new Date();
                         const isThisWeek = (now - taskDate) < 7 * 24 * 60 * 60 * 1000;
@@ -151,34 +116,20 @@ const Leaderboard = () => {
 
                         const points = (task.priority || 'low').toLowerCase() === 'high' ? 20 :
                             (task.priority || 'low').toLowerCase() === 'medium' ? 10 : 5;
-                        const assignees = task.assignees || [];
-                        if (assignees.length > 0) {
-                            const pointsPerPerson = points / assignees.length;
-                            assignees.forEach(a => {
-                                if (!a.name) return;
-                                let finalPoints = pointsPerPerson;
-                                const projectId = task.project._id || task.project;
-                                const ownerId = projectOwners[projectId];
-                                let isBonus = false;
-                                if (ownerId && (a._id || a) === ownerId) {
-                                    finalPoints += 2;
-                                    isBonus = true;
-                                }
-                                detailedLog.push({
-                                    user: a,
-                                    taskTitle: task.title,
-                                    points: Math.round(finalPoints * 10) / 10,
-                                    priority: task.priority || 'low',
-                                    isBonus,
-                                    date: taskDate
-                                });
+                        
+                        const assignee = task.assignedTo;
+                        if (assignee) {
+                            detailedLog.push({
+                                user: assignee,
+                                taskTitle: task.title,
+                                points,
+                                date: taskDate
                             });
                         }
                     }
                 });
                 detailedLog.sort((a, b) => b.date - a.date);
-                setRecentActivity(detailedLog.slice(0, 20));
-
+                setRecentActivity(detailedLog.slice(0, 15));
                 setStats(sorted);
             } catch (error) {
                 console.error("Failed to fetch leaderboard", error);
@@ -190,275 +141,179 @@ const Leaderboard = () => {
         fetchLeaderboardData();
     }, [timeRange]);
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
-    };
-
-    const itemVariants = {
-        hidden: { x: -20, opacity: 0 },
-        visible: { x: 0, opacity: 1 }
-    };
-
     return (
-        <div className="p-8 h-full overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#0a0f1c] transition-colors relative">
-            {/* Background Decoration */}
-            <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none"></div>
+        <div className="flex-1 h-full overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#050505] p-8 transition-colors duration-300 relative">
+            <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
 
-            <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-                <div>
-                    <h1 className="text-4xl font-black text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
-                        <span className="p-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl text-white shadow-lg shadow-orange-500/20 transform -rotate-6">
-                            <FiAward size={32} />
-                        </span>
-                        Leaderboard
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                        Rise through the ranks and earn badges! 🏆
-                    </p>
-                </div>
-
-                <div className="flex bg-white dark:bg-white/5 p-1.5 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm">
-                    {['all', 'month', 'week'].map((r) => (
-                        <button
-                            key={r}
-                            onClick={() => setTimeRange(r)}
-                            className={`px-5 py-2.5 rounded-xl text-sm font-bold capitalize transition-all ${timeRange === r
-                                ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/25 scale-105'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5'
-                                }`}
-                        >
-                            {r === 'all' ? 'All Time' : r}
-                        </button>
-                    ))}
-                </div>
-            </header>
-
-            {loading ? (
-                <div className="flex justify-center py-32">
-                    <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-            ) : (
-                <div className="max-w-6xl mx-auto relative z-10">
-                    {/* Top 3 Podium - Always show if at least 1 user */}
-                    {stats.length > 0 && (
-                        <div className="flex flex-wrap justify-center items-end gap-6 mb-20 px-4 pt-10">
-                            {/* 2nd Place */}
-                            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center order-1 md:order-1 opacity-90">
-                                {stats[1] ? (
-                                    <>
-                                        <div className="relative group">
-                                            <div className="absolute -inset-1 bg-gradient-to-br from-indigo-300 to-indigo-500 rounded-2xl transform rotate-3 scale-95 blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
-                                            <div className="w-24 h-24 rounded-2xl border-b-4 border-indigo-400 bg-gradient-to-b from-indigo-500 to-indigo-700 relative z-10 overflow-hidden shadow-xl flex flex-col items-center justify-center group-hover:-translate-y-2 transition-transform">
-                                                <div className="absolute top-0 w-full h-1/2 bg-white/10"></div>
-                                                {stats[1].member.avatar ? <img src={stats[1].member.avatar} className="w-full h-full object-cover" /> : <div className="text-3xl font-black text-indigo-200">{stats[1].member.name?.charAt(0)}</div>}
-                                            </div>
-                                            <div className="absolute -bottom-4 translate-y-1/2 bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg border border-indigo-400 shadow-lg z-20">Lvl {stats[1].level}</div>
-                                        </div>
-                                        <div className="mt-8 flex flex-col items-center">
-                                            <div className="text-4xl font-black text-indigo-300 mb-1">2</div>
-                                            <h3 className="font-bold text-slate-700 dark:text-white text-lg">{stats[1].member.name}</h3>
-                                            <div className="font-mono text-indigo-400 font-bold">{stats[1].points} pts</div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col items-center opacity-30">
-                                        <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-400 bg-slate-800/50 flex items-center justify-center text-4xl">🥈</div>
-                                        <div className="mt-4 text-slate-500 font-bold">Empty</div>
-                                    </div>
-                                )}
-                            </motion.div>
-
-                            {/* 1st Place - Center */}
-                            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex flex-col items-center order-first md:order-2 -mt-12 mb-6 md:mb-0 scale-110 z-20">
-                                <div className="absolute -top-20 animate-bounce">
-                                    <FiStar className="text-5xl text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] fill-yellow-400" />
-                                </div>
-                                <div className="relative group">
-                                    <div className="absolute -inset-1 bg-gradient-to-br from-amber-300 to-yellow-600 rounded-3xl blur opacity-50 group-hover:opacity-100 transition duration-500 animate-pulse"></div>
-                                    <div className="w-32 h-32 rounded-3xl border-b-[6px] border-yellow-500 bg-gradient-to-b from-yellow-400 to-amber-600 relative z-10 overflow-hidden shadow-2xl flex flex-col items-center justify-center group-hover:-translate-y-2 transition-transform">
-                                        <div className="absolute top-0 w-full h-1/2 bg-white/20"></div>
-                                        {stats[0]?.member.avatar ? <img src={stats[0].member.avatar} className="w-full h-full object-cover" /> : <div className="text-5xl font-black text-yellow-100">{stats[0]?.member.name?.charAt(0)}</div>}
-                                    </div>
-                                    <div className="absolute -bottom-5 translate-y-1/2 bg-gradient-to-r from-yellow-600 to-amber-600 text-white text-sm font-bold px-4 py-1.5 rounded-xl border border-yellow-400 shadow-xl z-20 whitespace-nowrap">
-                                        Lvl {stats[0]?.level} Master
-                                    </div>
-                                </div>
-                                <div className="mt-10 flex flex-col items-center">
-                                    <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-sm mb-1">1</div>
-                                    <h3 className="font-bold text-slate-900 dark:text-white text-2xl">{stats[0]?.member.name}</h3>
-                                    <div className="font-mono text-yellow-500 font-bold text-xl">{stats[0]?.points} pts</div>
-                                    <div className="flex gap-1 mt-2">
-                                        {stats[0]?.badges.map((b, i) => (
-                                            <span key={i} title={b.name} className="text-lg hover:scale-125 transition-transform cursor-help drop-shadow-md">{b.icon}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </motion.div>
-
-                            {/* 3rd Place */}
-                            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }} className="flex flex-col items-center order-3 opacity-90">
-                                {stats[2] ? (
-                                    <>
-                                        <div className="relative group">
-                                            <div className="absolute -inset-1 bg-gradient-to-br from-orange-300 to-orange-500 rounded-2xl transform -rotate-3 scale-95 blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
-                                            <div className="w-24 h-24 rounded-2xl border-b-4 border-orange-400 bg-gradient-to-b from-orange-400 to-orange-600 relative z-10 overflow-hidden shadow-xl flex flex-col items-center justify-center group-hover:-translate-y-2 transition-transform">
-                                                <div className="absolute top-0 w-full h-1/2 bg-white/10"></div>
-                                                {stats[2].member.avatar ? <img src={stats[2].member.avatar} className="w-full h-full object-cover" /> : <div className="text-3xl font-black text-orange-200">{stats[2].member.name?.charAt(0)}</div>}
-                                            </div>
-                                            <div className="absolute -bottom-4 translate-y-1/2 bg-orange-600 text-white text-xs font-bold px-3 py-1 rounded-lg border border-orange-400 shadow-lg z-20">Lvl {stats[2].level}</div>
-                                        </div>
-                                        <div className="mt-8 flex flex-col items-center">
-                                            <div className="text-4xl font-black text-orange-400 mb-1">3</div>
-                                            <h3 className="font-bold text-slate-700 dark:text-white text-lg">{stats[2].member.name}</h3>
-                                            <div className="font-mono text-indigo-400 font-bold">{stats[2].points} pts</div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col items-center opacity-30">
-                                        <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-400 bg-slate-800/50 flex items-center justify-center text-4xl">🥉</div>
-                                        <div className="mt-4 text-slate-500 font-bold">Empty</div>
-                                    </div>
-                                )}
-                            </motion.div>
-                        </div>
-                    )}
-
-                    {/* Rankings List */}
-                    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-4 pb-20">
-                        {stats.map((score, index) => (
-                            // Show ALL users in the list below, even if they are on the podium.
-                            // This ensures the "Leaderboard" list is complete and easy to scan.
-                            <motion.div
-                                key={score.member._id}
-                                variants={itemVariants}
-                                whileHover={{ scale: 1.005 }}
-                                className="group relative bg-white dark:bg-[#151b2b] border border-slate-200 dark:border-white/5 rounded-2xl p-4 md:p-5 flex items-center gap-4 md:gap-6 shadow-sm hover:shadow-xl transition-all overflow-hidden"
-                            >
-                                {/* Progress Bar Background (Subtle) */}
-                                <div className="absolute bottom-0 left-0 h-1 bg-indigo-500/10 w-full">
-                                    <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-1000" style={{ width: `${score.progress}%` }}></div>
-                                </div>
-
-                                <div className="w-8 md:w-10 font-black text-xl md:text-2xl text-slate-300 group-hover:text-indigo-500 transition-colors italic">#{index + 1}</div>
-
-                                <div className="relative">
-                                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden ring-2 ring-slate-100 dark:ring-white/10 group-hover:ring-indigo-500 transition-all">
-                                        {score.member.avatar ? (
-                                            <img src={score.member.avatar} alt="avatar" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-500">{score.member.name?.charAt(0)}</div>
-                                        )}
-                                    </div>
-                                    <div className="absolute -bottom-1 -right-1 bg-slate-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-600">Lvl {score.level}</div>
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-3 mb-1">
-                                        <h4 className="font-bold text-slate-900 dark:text-white text-base md:text-lg truncate">{score.member.name}</h4>
-                                        <div className="flex gap-1 hidden md:flex">
-                                            {score.badges.map((b, i) => (
-                                                <span key={i} title={b.name} className={`text-sm cursor-help opacity-70 hover:opacity-100 hover:scale-110 transition-transform`}>{b.icon}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-3 md:gap-6 text-xs text-slate-500">
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                            <span>{score.tasksCompleted} Tasks</span>
-                                        </div>
-                                        <div className="hidden md:flex items-center gap-1.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                                            <span>{Math.round(score.progress)}% XP</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="text-right pl-4 border-l border-slate-100 dark:border-white/5">
-                                    <div className="text-xl md:text-2xl font-black text-slate-900 dark:text-white group-hover:text-indigo-400 transition-colors">{score.points}</div>
-                                    <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Points</div>
-                                </div>
-                            </motion.div>
-                        ))}
-                    </motion.div>
-
-                    {stats.length === 0 && (
-                        <div className="text-center py-20">
-                            <div className="text-6xl mb-4">👻</div>
-                            <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200">No Champions Yet</h3>
-                            <p className="text-slate-500">Complete tasks to appear on the leaderboard!</p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Recent Activity / History Section */}
-            {!loading && recentActivity.length > 0 && (
-                <div className="max-w-4xl mx-auto mt-16 px-6 pb-24">
-                    <div className="flex items-center gap-4 mb-10">
-                        <div className="p-3 bg-purple-500/10 text-purple-500 rounded-xl">
-                            <FiClock size={24} />
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Live Activity Feed</h2>
-                            <p className="text-slate-500 text-sm">Real-time updates from across the workspace</p>
-                        </div>
+            <div className="max-w-7xl mx-auto space-y-12 pb-24 relative z-10">
+                
+                {/* Header Section */}
+                <header className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+                    <div>
+                        <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-4">
+                            <span className="p-3 bg-amber-400 text-white rounded-2xl shadow-xl shadow-amber-400/20 transform -rotate-3"><FiAward size={32} /></span>
+                            Workspace Champions
+                        </h2>
+                        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Top contributors based on completed impact points.</p>
                     </div>
 
-                    <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-6 space-y-8">
-                        {recentActivity.map((activity, idx) => (
-                            <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                                className="relative pl-8"
+                    <div className="flex bg-white dark:bg-white/5 p-1.5 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm self-start">
+                        {['all', 'month', 'week'].map((r) => (
+                            <button
+                                key={r}
+                                onClick={() => setTimeRange(r)}
+                                className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${timeRange === r
+                                    ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105'
+                                    : 'text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5'
+                                    }`}
                             >
-                                {/* Timeline Dot */}
-                                <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-slate-50 dark:border-[#0a0f1c] ${activity.isBonus ? 'bg-amber-500' :
-                                    activity.priority === 'high' ? 'bg-red-500' : 'bg-indigo-500'
-                                    } shadow-lg`}></div>
-
-                                <div className="bg-white dark:bg-[#151b2b] p-4 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2">
-                                            {activity.user.avatar ? (
-                                                <img src={activity.user.avatar} className="w-6 h-6 rounded-full object-cover" />
-                                            ) : (
-                                                <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold">{activity.user.name?.charAt(0)}</div>
-                                            )}
-                                            <span className="font-bold text-slate-900 dark:text-white text-sm">{activity.user.name}</span>
-                                            <span className="text-slate-400 text-xs">completed</span>
-                                        </div>
-                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-1 rounded-lg">
-                                            {activity.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-medium text-slate-700 dark:text-slate-300 text-sm line-clamp-1 group-hover:text-primary transition-colors">
-                                                {activity.taskTitle}
-                                            </p>
-                                            {activity.priority === 'high' && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded mt-1">
-                                                    <FiTrendingUp size={10} /> High Impact
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col items-end">
-                                            <span className={`font-black text-lg ${activity.isBonus ? 'text-amber-500' : 'text-emerald-500'}`}>
-                                                +{activity.points}
-                                            </span>
-                                            {activity.isBonus && <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Lead Bonus</span>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
+                                {r === 'all' ? 'All Time' : r}
+                            </button>
                         ))}
                     </div>
-                </div>
-            )}
+                </header>
+
+                {loading ? (
+                    <div className="py-40 flex flex-col items-center justify-center gap-4">
+                        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Calculating Standings...</p>
+                    </div>
+                ) : (
+                    <div className="space-y-20">
+                        
+                        {/* Podium Section */}
+                        {stats.length > 0 && (
+                            <div className="flex flex-col lg:flex-row items-center justify-center gap-8 pt-10">
+                                {/* Runner Up */}
+                                {stats[1] && (
+                                    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="order-2 lg:order-1 flex flex-col items-center group cursor-pointer" onClick={() => navigate(`/profile/${stats[1].member._id}`)}>
+                                        <div className="relative mb-6">
+                                            <div className="absolute -inset-1 bg-slate-300 dark:bg-slate-700 rounded-3xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                                            <div className="w-24 h-24 rounded-[2rem] border-b-4 border-slate-300 bg-white dark:bg-slate-800 relative z-10 overflow-hidden shadow-xl flex items-center justify-center">
+                                                {stats[1].member.avatar ? <img src={stats[1].member.avatar} className="w-full h-full object-cover" /> : <span className="text-3xl font-black text-slate-300">{stats[1].member.name?.charAt(0)}</span>}
+                                            </div>
+                                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-[10px] font-black px-3 py-1 rounded-lg border border-slate-200 dark:border-slate-600 z-20 shadow-md">#2</div>
+                                        </div>
+                                        <h3 className="font-bold text-slate-900 dark:text-white mb-1">{stats[1].member.name}</h3>
+                                        <p className="text-primary font-black text-lg">{stats[1].points} <span className="text-[10px] uppercase">pts</span></p>
+                                    </motion.div>
+                                )}
+
+                                {/* Champion */}
+                                <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="order-1 lg:order-2 flex flex-col items-center scale-125 lg:mb-12 group cursor-pointer" onClick={() => navigate(`/profile/${stats[0].member._id}`)}>
+                                    <div className="relative mb-6">
+                                        <div className="absolute -inset-2 bg-amber-400 rounded-[2.5rem] blur opacity-30 group-hover:opacity-60 transition-opacity animate-pulse"></div>
+                                        <div className="w-28 h-28 rounded-[2.2rem] border-b-4 border-amber-500 bg-gradient-to-br from-amber-300 to-amber-500 relative z-10 overflow-hidden shadow-2xl flex items-center justify-center">
+                                            {stats[0].member.avatar ? <img src={stats[0].member.avatar} className="w-full h-full object-cover" /> : <span className="text-4xl font-black text-white">{stats[0].member.name?.charAt(0)}</span>}
+                                        </div>
+                                        <div className="absolute -top-4 -right-4 bg-amber-400 text-white p-2 rounded-xl shadow-lg z-20 border-2 border-white dark:border-[#050505]"><FiAward size={20} /></div>
+                                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-amber-400 text-white text-[10px] font-black px-4 py-1 rounded-lg z-20 shadow-lg border border-amber-300 uppercase tracking-widest">Master</div>
+                                    </div>
+                                    <h3 className="font-black text-slate-900 dark:text-white text-xl mb-1">{stats[0].member.name}</h3>
+                                    <p className="text-amber-500 font-black text-2xl">{stats[0].points} <span className="text-[10px] uppercase">pts</span></p>
+                                </motion.div>
+
+                                {/* Third */}
+                                {stats[2] && (
+                                    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="order-3 flex flex-col items-center group cursor-pointer" onClick={() => navigate(`/profile/${stats[2].member._id}`)}>
+                                        <div className="relative mb-6">
+                                            <div className="absolute -inset-1 bg-orange-300 dark:bg-orange-900 rounded-3xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                                            <div className="w-24 h-24 rounded-[2rem] border-b-4 border-orange-400 bg-white dark:bg-slate-800 relative z-10 overflow-hidden shadow-xl flex items-center justify-center">
+                                                {stats[2].member.avatar ? <img src={stats[2].member.avatar} className="w-full h-full object-cover" /> : <span className="text-3xl font-black text-orange-200">{stats[2].member.name?.charAt(0)}</span>}
+                                            </div>
+                                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] font-black px-3 py-1 rounded-lg border border-orange-100 dark:border-orange-900/50 z-20 shadow-md">#3</div>
+                                        </div>
+                                        <h3 className="font-bold text-slate-900 dark:text-white mb-1">{stats[2].member.name}</h3>
+                                        <p className="text-primary font-black text-lg">{stats[2].points} <span className="text-[10px] uppercase">pts</span></p>
+                                    </motion.div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Full Rankings List */}
+                        <div className="bg-white dark:bg-[#121212] border border-slate-200 dark:border-white/5 rounded-[2.5rem] overflow-hidden shadow-sm">
+                            <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-white/5">
+                                {stats.map((u, i) => (
+                                    <motion.div 
+                                        key={u.member._id}
+                                        initial={{ opacity: 0 }}
+                                        whileInView={{ opacity: 1 }}
+                                        className="p-6 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-all group cursor-pointer"
+                                        onClick={() => navigate(`/profile/${u.member._id}`)}
+                                    >
+                                        <div className="flex items-center gap-6 flex-1">
+                                            <div className="w-12 font-black text-2xl text-slate-300 dark:text-slate-700 group-hover:text-primary transition-colors italic">#{i+1}</div>
+                                            <div className="relative">
+                                                <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200 dark:border-white/10 overflow-hidden shadow-sm">
+                                                    {u.member.avatar ? <img src={u.member.avatar} className="w-full h-full object-cover rounded-xl" /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-400">{u.member.name.charAt(0)}</div>}
+                                                </div>
+                                                <div className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded border border-slate-700">LVL {u.level}</div>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="font-bold text-slate-900 dark:text-white truncate">{u.member.name}</h4>
+                                                <div className="flex items-center gap-3 mt-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{u.tasksCompleted} Tasks</span>
+                                                    <div className="w-1 h-1 rounded-full bg-slate-300"></div>
+                                                    <span className="text-[10px] font-bold text-primary uppercase tracking-widest">{u.projectsCount} Projects</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-8">
+                                            <div className="flex gap-2">
+                                                {u.badges.map((b, idx) => (
+                                                    <div key={idx} className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 flex items-center justify-center text-sm shadow-sm" title={b.name}>{b.icon}</div>
+                                                ))}
+                                            </div>
+                                            <div className="text-right min-w-[80px]">
+                                                <p className="text-2xl font-black text-slate-900 dark:text-white group-hover:text-primary transition-colors">{u.points}</p>
+                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Points</p>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Recent Impact Feed */}
+                        <div className="max-w-3xl mx-auto space-y-8">
+                             <div className="flex items-center gap-4">
+                                <div className="p-3 bg-primary/10 text-primary rounded-2xl"><FiZap size={24} /></div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Recent Impact</h3>
+                                    <p className="text-slate-500 text-sm font-medium">Real-time completion activity from the team.</p>
+                                </div>
+                             </div>
+
+                             <div className="space-y-4">
+                                 {recentActivity.map((a, i) => (
+                                     <motion.div 
+                                        key={i}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: i * 0.05 }}
+                                        className="flex items-center justify-between p-5 bg-white dark:bg-[#121212] border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm"
+                                     >
+                                         <div className="flex items-center gap-4 min-w-0">
+                                             <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-500 border border-slate-200 dark:border-white/5 overflow-hidden">
+                                                 {a.user.avatar ? <img src={a.user.avatar} className="w-full h-full object-cover" /> : a.user.name?.charAt(0)}
+                                             </div>
+                                             <div className="min-w-0">
+                                                 <p className="text-sm font-bold text-slate-900 dark:text-white truncate"><b>{a.user.name}</b> completed task</p>
+                                                 <p className="text-xs text-slate-500 truncate italic">"{a.taskTitle}"</p>
+                                             </div>
+                                         </div>
+                                         <div className="text-right">
+                                             <p className="text-emerald-500 font-black">+{a.points}</p>
+                                             <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(a.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                         </div>
+                                     </motion.div>
+                                 ))}
+                             </div>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

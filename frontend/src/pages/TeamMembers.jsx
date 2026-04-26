@@ -44,7 +44,7 @@ const TeamMembers = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-[#050505] p-6 lg:p-12 transition-colors duration-300 font-sans">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#050505] p-6 lg:p-12 transition-colors duration-300 font-sans h-full relative">
             <header className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <Link to="/" className="inline-flex items-center text-slate-500 hover:text-primary transition-colors mb-4 gap-2">

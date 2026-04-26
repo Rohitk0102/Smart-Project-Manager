@@ -5,8 +5,8 @@ const taskSchema = new mongoose.Schema({
     description: { type: String },
     status: {
         type: String,
-        enum: ['todo', 'in_progress', 'review', 'done'],
-        default: 'todo',
+        enum: ['to-do', 'running', 'completed'],
+        default: 'to-do',
     },
     priority: {
         type: String,
@@ -14,7 +14,7 @@ const taskSchema = new mongoose.Schema({
         default: 'medium',
     },
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-    assignees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     dueDate: { type: Date },
     attachments: [{ type: String }], // URLs to files
     order: { type: Number, default: 0 },

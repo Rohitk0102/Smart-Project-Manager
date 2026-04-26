@@ -16,7 +16,7 @@ const Layout = ({ children }) => {
 
             <main className="flex-1 flex flex-col overflow-hidden relative z-10 bg-transparent backdrop-blur-[0px]">
                 <ClerkHeader compact />
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden relative">
                     {children}
                 </div>
             </main>

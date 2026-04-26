@@ -109,31 +109,24 @@ const FloatingChatbot = () => {
 
         try {
             const projectId = getProjectId();
-            const formData = new FormData();
-            formData.append('message', userMsg.text);
-            formData.append('projectId', projectId);
-
-            // Send History (exclude current message)
+            
+            // Use the new /ai/chat proxy
             const history = messages.map(m => ({
                 sender: m.sender,
                 text: m.text
             }));
-            formData.append('history', JSON.stringify(history));
+            
+            const payload = {
+                messages: [...history, userMsg],
+                projectContext: projectId ? { name: projectId } : undefined // We don't have the full name here easily, but can pass ID or fetch
+            };
 
-            if (fileToSend) {
-                formData.append('file', fileToSend);
-            }
-
-            const res = await api.post('/projects/ai/command', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const res = await api.post('/ai/chat', payload);
 
             const botMsg = {
                 id: Date.now() + 1,
                 text: res.data.reply,
-                sender: 'bot',
-                task: res.data.task, // Existing task handling
-                project: res.data.project // New project handling
+                sender: 'bot'
             };
             setMessages(prev => [...prev, botMsg]);
 

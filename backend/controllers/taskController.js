@@ -1,21 +1,27 @@
 const Task = require('../models/Task');
 const Project = require('../models/Project');
 const axios = require('axios');
-
 const { getIO } = require('../socket');
+
+// Helper to check authorization for Task mutations (Create/Update/Delete)
+const canMutateTaskInProject = async (user, projectId) => {
+    if (user.role === 'CTO') return true;
+    const project = await Project.findById(projectId);
+    if (!project) return false;
+    
+    const isOwner = project.ownerId && project.ownerId.toString() === user._id.toString();
+    const isLead = project.assignedLeads && project.assignedLeads.some(id => id.toString() === user._id.toString());
+    
+    return isOwner || isLead;
+};
 
 // @desc    Analyze task description using AI Service
 // @route   POST /api/tasks/analyze
 // @access  Private
 const analyzeTask = async (req, res) => {
     const { description } = req.body;
-
     try {
-        // Call Python AI Service
-        const response = await axios.post('http://localhost:5001/api/analyze', {
-            description
-        });
-
+        const response = await axios.post('http://localhost:5001/api/analyze', { description });
         res.json(response.data);
     } catch (error) {
         console.error("AI Service Error:", error.message);
@@ -29,30 +35,26 @@ const checkProjectCompletion = async (projectId) => {
 
     try {
         const totalTasks = await Task.countDocuments({ project: projectId });
-        const completedTasks = await Task.countDocuments({ project: projectId, status: 'done' });
+        const completedTasks = await Task.countDocuments({ project: projectId, status: 'completed' });
+        const runningTasks = await Task.countDocuments({ project: projectId, status: 'running' });
 
         const project = await Project.findById(projectId);
         if (!project) return;
 
         let statusChanged = false;
 
-        // If all tasks are done, WE DO NOT AUTO-MARK AS COMPLETED anymore.
-        // User must manually click "Complete".
-
-        // If previously completed but now not (e.g. task moved back or new task added), revert to active
         if (project.status === 'completed' && (totalTasks === 0 || totalTasks !== completedTasks)) {
             await Project.findByIdAndUpdate(projectId, { status: 'active' });
             statusChanged = true;
         }
 
         if (statusChanged) {
-            // Emit project update
             const updatedProject = await Project.findById(projectId)
-                .populate('owner', 'name email')
-                .populate('members', 'name email avatar');
+                .populate('ownerId', 'name email avatar')
+                .populate('assignedLeads', 'name email avatar')
+                .populate('assignedEmployees', 'name email avatar');
 
-            const inProgressTasks = await Task.countDocuments({ project: projectId, status: 'in_progress' });
-            const weightedProgress = completedTasks + (inProgressTasks * 0.5);
+            const weightedProgress = completedTasks + (runningTasks * 0.5);
             const progress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
 
             const projectData = {
@@ -60,7 +62,7 @@ const checkProjectCompletion = async (projectId) => {
                 progress,
                 totalTasks,
                 completedTasks,
-                inProgressTasks
+                inProgressTasks: runningTasks
             };
 
             const io = getIO();
@@ -73,25 +75,26 @@ const checkProjectCompletion = async (projectId) => {
 
 // @desc    Create a new task
 // @route   POST /api/tasks
-// @access  Private
+// @access  Private (CTO, PM, TeamLead)
 const createTask = async (req, res) => {
-    const { title, description, status, priority, project, assignees, dueDate } = req.body;
+    const { title, description, status, priority, project, assignedTo, dueDate } = req.body;
+
+    const isAuthorized = await canMutateTaskInProject(req.user, project);
+    if (!isAuthorized) return res.status(403).json({ message: 'Forbidden: You are not authorized to create tasks in this project.' });
 
     const task = await Task.create({
         title,
         description,
-        status,
+        status: status || 'to-do',
         priority,
         project,
-        assignees,
+        assignedTo,
         dueDate,
     });
 
     const { addToGoogleCalendar } = require('../services/googleCalendarService');
+    const populatedTask = await Task.findById(task._id).populate('assignedTo', 'name email avatar');
 
-    const populatedTask = await Task.findById(task._id).populate('assignees', 'name email avatar');
-
-    // Add to Google Calendar if due date exists and user is connected
     if (dueDate) {
         await addToGoogleCalendar(req.user._id, task);
     }
@@ -103,7 +106,6 @@ const createTask = async (req, res) => {
         console.error("Socket emit error:", error);
     }
 
-    // Check project completion (e.g. if adding a task to a completed project, it should revert to active)
     await checkProjectCompletion(project);
 
     res.status(201).json(populatedTask);
@@ -114,78 +116,115 @@ const createTask = async (req, res) => {
 // @access  Private
 const getTasksByProject = async (req, res) => {
     const tasks = await Task.find({ project: req.params.projectId })
-        .populate('assignees', 'name email avatar');
+        .populate('assignedTo', 'name email avatar');
 
     res.json(tasks);
 };
 
-// @desc    Update task status (drag and drop)
+// @desc    Update task (Full Update)
 // @route   PUT /api/tasks/:id
-// @access  Private
+// @access  Private (CTO, PM, TeamLead)
 const updateTask = async (req, res) => {
     const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
 
-    if (task) {
-        task.status = req.body.status || task.status;
-        task.priority = req.body.priority || task.priority;
-        task.assignees = req.body.assignees || task.assignees;
+    const isAuthorized = await canMutateTaskInProject(req.user, task.project);
+    if (!isAuthorized) return res.status(403).json({ message: 'Forbidden: You are not authorized to edit tasks in this project.' });
 
-        const updatedTask = await task.save();
+    task.title = req.body.title || task.title;
+    task.description = req.body.description !== undefined ? req.body.description : task.description;
+    task.status = req.body.status || task.status;
+    task.priority = req.body.priority || task.priority;
+    task.assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : task.assignedTo;
+    task.dueDate = req.body.dueDate || task.dueDate;
 
-        // Populate manually or re-fetch if needed, but for status update it might be fine.
-        // Better to populate to match frontend expectations if we replace the object.
-        // But purely for status update, sending the object is usually enough if frontend merges.
-        // Let's re-fetch to be safe and consistent.
-        const populatedTask = await Task.findById(updatedTask._id).populate('assignees', 'name email avatar');
+    const updatedTask = await task.save();
+    const populatedTask = await Task.findById(updatedTask._id).populate('assignedTo', 'name email avatar');
 
-        try {
-            const io = getIO();
-            io.to(task.project.toString()).emit("task_updated", populatedTask);
-        } catch (error) {
-            console.error("Socket emit error:", error);
-        }
-
-        // Check for Project Completion
-        await checkProjectCompletion(task.project);
-
-        res.json(updatedTask);
-    } else {
-        res.status(404).json({ message: 'Task not found' });
+    try {
+        const io = getIO();
+        io.to(task.project.toString()).emit("task_updated", populatedTask);
+    } catch (error) {
+        console.error("Socket emit error:", error);
     }
+
+    await checkProjectCompletion(task.project);
+    res.json(populatedTask);
+};
+
+// @desc    Update task status only
+// @route   PATCH /api/tasks/:id/status
+// @access  Private (All Roles, Employee checked against assignee)
+const updateTaskStatus = async (req, res) => {
+    const { status } = req.body;
+    if (!['to-do', 'running', 'completed'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+
+    if (req.user.role === 'Employee') {
+        if (!task.assignedTo || task.assignedTo.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: Employees can only update status of their assigned tasks.' });
+        }
+    } else {
+        // CTO, PM, TeamLead must still pass the project authorization
+        const isAuthorized = await canMutateTaskInProject(req.user, task.project);
+        if (!isAuthorized) return res.status(403).json({ message: 'Forbidden: Not authorized.' });
+    }
+
+    task.status = status;
+    const updatedTask = await task.save();
+    const populatedTask = await Task.findById(updatedTask._id).populate('assignedTo', 'name email avatar');
+
+    try {
+        const io = getIO();
+        io.to(task.project.toString()).emit("task_updated", populatedTask);
+    } catch (error) {
+        console.error("Socket emit error:", error);
+    }
+
+    await checkProjectCompletion(task.project);
+    res.json(populatedTask);
 };
 
 // @desc    Delete a task
 // @route   DELETE /api/tasks/:id
-// @access  Private
+// @access  Private (CTO, PM, TeamLead)
 const deleteTask = async (req, res) => {
     const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
 
-    if (task) {
-        const projectId = task.project.toString();
-        await task.deleteOne();
+    const isAuthorized = await canMutateTaskInProject(req.user, task.project);
+    if (!isAuthorized) return res.status(403).json({ message: 'Forbidden: You are not authorized to delete tasks in this project.' });
 
-        try {
-            const io = getIO();
-            io.to(projectId).emit("task_deleted", req.params.id);
-        } catch (error) {
-            console.error("Socket emit error:", error);
-        }
+    const projectId = task.project.toString();
+    await task.deleteOne();
 
-        res.json({ message: 'Task removed' });
-
-        // Check project completion
-        await checkProjectCompletion(projectId);
-    } else {
-        res.status(404).json({ message: 'Task not found' });
+    try {
+        const io = getIO();
+        io.to(projectId).emit("task_deleted", req.params.id);
+    } catch (error) {
+        console.error("Socket emit error:", error);
     }
+
+    await checkProjectCompletion(projectId);
+    res.json({ message: 'Task removed' });
 };
 
+// @desc    Reorder tasks
+// @route   PUT /api/tasks/reorder
+// @access  Private (CTO, PM, TeamLead)
 const reorderTasks = async (req, res) => {
-    const { tasks, projectId } = req.body; // Array of { _id, order, status } and projectId
+    const { tasks, projectId } = req.body; 
 
     if (!tasks || !Array.isArray(tasks)) {
         return res.status(400).json({ message: 'Invalid data' });
     }
+
+    const isAuthorized = await canMutateTaskInProject(req.user, projectId);
+    if (!isAuthorized) return res.status(403).json({ message: 'Forbidden: Not authorized.' });
 
     try {
         const bulkOps = tasks.map(task => ({
@@ -200,15 +239,7 @@ const reorderTasks = async (req, res) => {
         if (projectId) {
             try {
                 const io = getIO();
-                // We emit the whole new list? Or just a signal to refetch?
-                // Reordering implies many changes. Sending just "tasks_reordered" signal might be best,
-                // and let frontend refetch. Or send the `tasks` array (which has partial data).
-                // Frontend usually listens to "tasks_reordered" and updates local state if it matches, 
-                // or refetches.
-                // Let's emit the updates provided.
                 io.to(projectId).emit("tasks_reordered", tasks);
-
-                // Check project completion after reorder (likely triggers status change too if drag-drop between columns)
                 await checkProjectCompletion(projectId);
             } catch (error) {
                 console.error("Socket emit error:", error);
@@ -227,10 +258,10 @@ const reorderTasks = async (req, res) => {
 // @access  Private
 const getMyTasks = async (req, res) => {
     try {
-        const tasks = await Task.find({ assignees: req.user._id })
-            .populate('project', 'name description') // Populate project details
-            .populate('assignees', 'name email avatar')
-            .sort({ dueDate: 1 }); // Sort by due date ascending
+        const tasks = await Task.find({ assignedTo: req.user._id })
+            .populate('project', 'name description status') 
+            .populate('assignedTo', 'name email avatar')
+            .sort({ dueDate: 1 }); 
         res.json(tasks);
     } catch (error) {
         console.error("Failed to fetch user tasks", error);
@@ -242,7 +273,8 @@ module.exports = {
     createTask,
     getTasksByProject,
     getMyTasks,
-    updateTaskStatus: updateTask,
+    updateTask,
+    updateTaskStatus,
     analyzeTask,
     deleteTask,
     reorderTasks

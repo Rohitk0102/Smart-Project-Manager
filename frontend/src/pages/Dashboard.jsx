@@ -181,8 +181,9 @@ const Dashboard = () => {
                 description: newProjectDesc,
                 status: newProjectStatus,
                 deadline: newProjectDeadline,
-                members: selectedMembers,
-                owner: selectedLead || user._id
+                assignedLeads: selectedLead ? [selectedLead] : [],
+                assignedEmployees: selectedMembers,
+                ownerId: user._id
             });
             setProjects([...projects, data]);
             setStats(prev => ({ ...prev, totalProjects: prev.totalProjects + 1 }));
@@ -191,7 +192,7 @@ const Dashboard = () => {
             setNewProjectDesc('');
             setNewProjectDeadline('');
             setNewProjectStatus('upcoming');
-            setSelectedLead(user._id);
+            setSelectedLead('');
             setSelectedMembers([]);
         } catch (error) {
             console.error("Failed to create project", error);
@@ -271,14 +272,16 @@ const Dashboard = () => {
                         </button>
                     </div>
 
-                    <button
-                        onClick={() => setShowModal(true)}
-                        className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:via-indigo-500 hover:to-violet-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 ring-1 ring-white/20 relative overflow-hidden"
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[200%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-in-out"></div>
-                        <FiPlus className="w-5 h-5 transition-transform duration-500 group-hover:rotate-180" />
-                        <span className="tracking-wide relative z-10">New Project</span>
-                    </button>
+                    {(user?.role === 'CTO' || user?.role === 'PM') && (
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:via-indigo-500 hover:to-violet-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 ring-1 ring-white/20 relative overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[200%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-in-out"></div>
+                            <FiPlus className="w-5 h-5 transition-transform duration-500 group-hover:rotate-180" />
+                            <span className="tracking-wide relative z-10">New Project</span>
+                        </button>
+                    )}
 
                 </div>
             </motion.header>

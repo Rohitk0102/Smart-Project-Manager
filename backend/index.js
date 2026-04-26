@@ -7,9 +7,12 @@ const { initSocket } = require('./socket');
 const PORT = process.env.PORT || 5005;
 const server = http.createServer(app);
 
+console.log('Starting server...');
+
 // Initialize Socket.io
 initSocket(server);
 
+console.log('Attempting to connect to database...');
 // Connect to Database and start server
 connectDB().then(() => {
     server.listen(PORT, () => {

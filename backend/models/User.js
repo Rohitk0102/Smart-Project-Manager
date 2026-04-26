@@ -22,15 +22,27 @@ const userSchema = mongoose.Schema({
     },
     googleAccessToken: { type: String },
     googleRefreshToken: { type: String },
-    isAdmin: {
-        type: Boolean,
-        required: true,
-        default: false
-    },
     role: {
         type: String,
-        enum: ['Admin', 'Manager', 'Member'],
-        default: 'Member'
+        enum: ['CTO', 'PM', 'TeamLead', 'Employee', 'Pending'],
+        default: 'Pending'
+    },
+    technicalRole: {
+        type: String,
+        enum: ['AI', 'Frontend', 'Backend', 'DevOps', 'ML Engineer', 'Unspecified'],
+        default: 'Unspecified'
+    },
+    points: {
+        type: Number,
+        default: 0
+    },
+    bio: {
+        type: String,
+        default: ''
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     },
     avatar: {
         type: String,

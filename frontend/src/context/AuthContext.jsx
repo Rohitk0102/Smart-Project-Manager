@@ -43,8 +43,26 @@ export const AuthProvider = ({ children }) => {
             setError('');
 
             try {
-                const { data } = await api.get('/auth/profile');
-                setUser(data);
+                let { data } = await api.get('/auth/profile');
+                
+                // CTO Bootstrapping Check
+                if (data.role === 'Pending' && localStorage.getItem('isCTOSignup') === 'true') {
+                    try {
+                        const claimRes = await api.post('/auth/claim-cto', { secret: '9866308149' });
+                        data = claimRes.data; // Update with the new CTO user object
+                        localStorage.removeItem('isCTOSignup'); // Clear flag
+                    } catch (claimErr) {
+                        console.error('Failed to claim CTO role', claimErr);
+                        setError(claimErr.response?.data?.message || 'CTO claim failed');
+                    }
+                }
+                
+                if (data.role === 'Pending') {
+                    setUser(null);
+                    setError('Account is pending role assignment. Please contact your administrator.');
+                } else {
+                    setUser(data);
+                }
             } catch (syncError) {
                 console.error('Clerk user sync failed', syncError);
                 setUser(null);

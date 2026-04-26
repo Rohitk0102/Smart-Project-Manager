@@ -1,27 +1,30 @@
 const Project = require('../models/Project');
 const Task = require('../models/Task');
+const User = require('../models/User');
+const { getIO } = require('../socket');
 const axios = require('axios');
 
 // @desc    Create a new project
 // @route   POST /api/projects
-// @access  Private
+// @access  Private (CTO, PM)
 const createProject = async (req, res) => {
-    const { name, description, deadline, members, status } = req.body;
+    const { name, description, deadline, assignedLeads, assignedEmployees, status } = req.body;
 
     const project = await Project.create({
         name,
         description,
         deadline,
-        members,
+        assignedLeads: assignedLeads || [],
+        assignedEmployees: assignedEmployees || [],
         status: status || 'active',
-        owner: req.body.owner || req.user._id,
+        ownerId: req.body.ownerId || req.user._id,
     });
 
     const populatedProject = await Project.findById(project._id)
-        .populate('owner', 'name email')
-        .populate('members', 'name email avatar');
+        .populate('ownerId', 'name email')
+        .populate('assignedLeads', 'name email avatar')
+        .populate('assignedEmployees', 'name email avatar');
 
-    // Global Broadast for Dashboard
     try {
         const io = getIO();
         io.emit("project_created", { ...populatedProject.toObject(), progress: 0, totalTasks: 0, completedTasks: 0 });
@@ -36,54 +39,29 @@ const createProject = async (req, res) => {
 // @route   GET /api/projects
 // @access  Private
 const getProjects = async (req, res) => {
-    // Get ALL projects (Public Workspace Mode)
-    console.log("Fetching ALL projects (Public Workspace Mode)");
     const projects = await Project.find({})
         .sort({ updatedAt: -1 })
-        .populate('owner', 'name email avatar')
-        .populate('members', 'name email avatar');
+        .populate('ownerId', 'name email avatar')
+        .populate('assignedLeads', 'name email avatar')
+        .populate('assignedEmployees', 'name email avatar');
 
-    // Calculate progress for each project
     const projectsWithProgress = await Promise.all(projects.map(async (project) => {
         const totalTasks = await Task.countDocuments({ project: project._id });
-        const completedTasks = await Task.countDocuments({ project: project._id, status: 'done' });
-        const inProgressTasks = await Task.countDocuments({ project: project._id, status: 'in_progress' });
+        const completedTasks = await Task.countDocuments({ project: project._id, status: 'completed' });
+        const runningTasks = await Task.countDocuments({ project: project._id, status: 'running' });
 
-        // Calculate progress: Done = 100%, In_Progress = 50%
-        const weightedProgress = completedTasks + (inProgressTasks * 0.5);
-        const progress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
-
-        console.log(`Project: ${project.name} (${project._id})`);
-        console.log(`Total: ${totalTasks}, Done: ${completedTasks}, InProgress: ${inProgressTasks}`);
-        console.log(`Weighted: ${weightedProgress}, Progress: ${progress}%`);
-
-        // Self-Healing: If progress < 100% and status is "completed", it should be "active".
-        // We DO NOT force strict "100% = completed" here to allow manual reopening of projects.
-        // But we DO enforce "Not 100% = Not Completed".
-        let status = project.status;
-        let corrected = false;
-
-        if (totalTasks > 0) {
-            // Only auto-revert to active if tasks are undone.
-            // WE DO NOT AUTO-COMPLETE. User must click "Complete".
-            if (progress < 100 && status === 'completed') {
-                status = 'active';
-                corrected = true;
-            }
-        }
-
-        if (corrected) {
-            // Update the DB asynchronously without blocking response
-            Project.findByIdAndUpdate(project._id, { status }).catch(err => console.error("Self-healing update error:", err));
-        }
+        const weightedProgress = completedTasks + (runningTasks * 0.5);
+        const autoProgress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
+        
+        const actualProgress = project.progressMode === 'Manual' ? project.manualProgress : autoProgress;
 
         return {
             ...project.toObject(),
-            status, // Return corrected status immediately
-            progress,
+            progress: actualProgress,
+            autoProgress,
             totalTasks,
             completedTasks,
-            inProgressTasks
+            inProgressTasks: runningTasks
         };
     }));
 
@@ -92,53 +70,52 @@ const getProjects = async (req, res) => {
 
 // @desc    Update project
 // @route   PUT /api/projects/:id
-// @access  Private
+// @access  Private (CTO, Owning PM)
 const updateProject = async (req, res) => {
     try {
-        const { name, description, deadline, status } = req.body;
-        console.log(`Updating project ${req.params.id} with status: ${status}`);
-
-        const project = await Project.findById(req.params.id);
+        const { name, description, deadline, status, assignedLeads, assignedEmployees } = req.body;
+        
+        const project = req.doc || await Project.findById(req.params.id);
 
         if (project) {
-            // PUBLIC WORKSPACE: Auth check removed
-            /*if (project.owner.toString() !== req.user._id.toString()) {
-                return res.status(401).json({ message: 'Not authorized' });
-            }*/
-
             const updatedDoc = await Project.findByIdAndUpdate(
                 req.params.id,
                 {
                     $set: {
                         ...(name && { name }),
-                        ...(description && { description }),
+                        ...(description !== undefined && { description }),
                         ...(deadline && { deadline }),
-                        ...(status && { status })
+                        ...(status && { status }),
+                        ...(assignedLeads && { assignedLeads }),
+                        ...(assignedEmployees && { assignedEmployees })
                     }
                 },
                 { new: true, runValidators: true }
             );
 
             const populated = await Project.findById(updatedDoc._id)
-                .populate('owner', 'name email')
-                .populate('members', 'name email avatar');
+                .populate('ownerId', 'name email avatar')
+                .populate('assignedLeads', 'name email avatar')
+                .populate('assignedEmployees', 'name email avatar');
 
             const totalTasks = await Task.countDocuments({ project: populated._id });
-            const completedTasks = await Task.countDocuments({ project: populated._id, status: 'done' });
-            const inProgressTasks = await Task.countDocuments({ project: populated._id, status: 'in_progress' });
+            const completedTasks = await Task.countDocuments({ project: populated._id, status: 'completed' });
+            const runningTasks = await Task.countDocuments({ project: populated._id, status: 'running' });
 
-            const weightedProgress = completedTasks + (inProgressTasks * 0.5);
-            const progress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
+            const weightedProgress = completedTasks + (runningTasks * 0.5);
+            const autoProgress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
+            
+            const actualProgress = populated.progressMode === 'Manual' ? populated.manualProgress : autoProgress;
 
             const finalProjectData = {
                 ...populated.toObject(),
-                progress,
+                progress: actualProgress,
+                autoProgress,
                 totalTasks,
                 completedTasks,
-                inProgressTasks
+                inProgressTasks: runningTasks
             };
 
-            // Broadcast Update Globally
             try {
                 const io = getIO();
                 io.emit("project_updated", finalProjectData);
@@ -161,44 +138,48 @@ const updateProject = async (req, res) => {
 // @access  Private
 const getProjectById = async (req, res) => {
     const project = await Project.findById(req.params.id)
-        .populate('owner', 'name email')
-        .populate('members', 'name email avatar');
+        .populate('ownerId', 'name email avatar')
+        .populate('assignedLeads', 'name email avatar')
+        .populate('assignedEmployees', 'name email avatar')
+        .populate('progressSuggestions.userId', 'name avatar');
 
     if (project) {
-        res.json(project);
+        const totalTasks = await Task.countDocuments({ project: project._id });
+        const completedTasks = await Task.countDocuments({ project: project._id, status: 'completed' });
+        const runningTasks = await Task.countDocuments({ project: project._id, status: 'running' });
+
+        const weightedProgress = completedTasks + (runningTasks * 0.5);
+        const autoProgress = totalTasks === 0 ? 0 : Math.round((weightedProgress / totalTasks) * 100);
+        
+        const actualProgress = project.progressMode === 'Manual' ? project.manualProgress : autoProgress;
+
+        res.json({
+            ...project.toObject(),
+            progress: actualProgress,
+            autoProgress,
+            totalTasks,
+            completedTasks
+        });
     } else {
         res.status(404).json({ message: 'Project not found' });
     }
 };
-
-// Removed duplicate Task import from here
-
 
 // @desc    Get dashboard statistics
 // @route   GET /api/projects/stats
 // @access  Private
 const getDashboardStats = async (req, res) => {
     try {
-        // PUBLIC WORKSPACE MODE: Stats are global
-        // 1. Total Projects (Global)
         const totalProjects = await Project.countDocuments({});
+        const activeTasks = await Task.countDocuments({ status: { $ne: 'completed' } });
+        const completedTasks = await Task.countDocuments({ status: 'completed' });
 
-        // 2. Active Tasks (Global)
-        const activeTasks = await Task.countDocuments({
-            status: { $ne: 'done' }
-        });
-
-        // 3. Completed Tasks (Global)
-        const completedTasks = await Task.countDocuments({
-            status: 'done'
-        });
-
-        // 4. Team Members (Global unique users involved in projects)
-        const allProjects = await Project.find({}).select('members owner');
+        const allProjects = await Project.find({}).select('assignedLeads assignedEmployees ownerId');
         const uniqueMembers = new Set();
         allProjects.forEach(p => {
-            if (p.owner) uniqueMembers.add(p.owner.toString());
-            p.members.forEach(m => uniqueMembers.add(m.toString()));
+            if (p.ownerId) uniqueMembers.add(p.ownerId.toString());
+            p.assignedLeads.forEach(m => uniqueMembers.add(m.toString()));
+            p.assignedEmployees.forEach(m => uniqueMembers.add(m.toString()));
         });
 
         res.json({
@@ -207,82 +188,123 @@ const getDashboardStats = async (req, res) => {
             completedTasks,
             teamMembers: uniqueMembers.size
         });
-
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server Error' });
     }
 };
 
-const User = require('../models/User');
-const { getIO } = require('../socket');
+// @desc    Toggle Progress Mode (Auto/Manual)
+// @route   PATCH /api/projects/:id/progress-config
+// @access  Private (CTO, PM)
+const updateProgressConfig = async (req, res) => {
+    try {
+        const { progressMode } = req.body;
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        project.progressMode = progressMode;
+        await project.save();
+        res.json(project);
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Set Manual Progress
+// @route   PATCH /api/projects/:id/progress-manual
+// @access  Private (CTO, PM, Lead)
+const updateManualProgress = async (req, res) => {
+    try {
+        const { progress } = req.body;
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        project.manualProgress = progress;
+        await project.save();
+        res.json(project);
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Suggest Progress Update
+// @route   POST /api/projects/:id/suggest-progress
+// @access  Private (Employee)
+const suggestProgress = async (req, res) => {
+    try {
+        const { suggestedPercent } = req.body;
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        project.progressSuggestions.push({
+            userId: req.user._id,
+            suggestedPercent,
+            status: 'pending'
+        });
+
+        await project.save();
+        res.json({ message: 'Suggestion sent' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Handle Progress Suggestion (Approve/Reject)
+// @route   PATCH /api/projects/:id/handle-suggestion
+// @access  Private (CTO, PM)
+const handleProgressSuggestion = async (req, res) => {
+    try {
+        const { suggestionId, status } = req.body;
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const suggestion = project.progressSuggestions.id(suggestionId);
+        if (!suggestion) return res.status(404).json({ message: 'Suggestion not found' });
+
+        suggestion.status = status;
+        if (status === 'approved') {
+            project.manualProgress = suggestion.suggestedPercent;
+        }
+
+        await project.save();
+        res.json(project);
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
 
 // @desc    Add member(s) to project
 // @route   POST /api/projects/:id/members
 // @access  Private
 const addProjectMember = async (req, res) => {
-    const { email, memberIds } = req.body; // memberIds: array of user IDs
+    const { email, roleType } = req.body;
     const projectId = req.params.id;
 
     try {
-        const project = await Project.findById(projectId);
+        const project = req.doc || await Project.findById(projectId);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        if (!project) {
-            return res.status(404).json({ message: 'Project not found' });
-        }
-
-        // PUBLIC WORKSPACE: Auth check removed
-        /* if (project.owner.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized to add members' });
-        } */
-
-        let usersToAddIds = [];
-
-        // Scenario 1: Bulk add by IDs
-        if (memberIds && Array.isArray(memberIds)) {
-            // Validate users exist
-            const validUsers = await User.find({ _id: { $in: memberIds } });
-            usersToAddIds = validUsers.map(u => u._id.toString());
-        }
-        // Scenario 2: Single add by Email (Legacy support)
-        else if (email) {
-            const user = await User.findOne({ email });
-            if (!user) {
-                return res.status(404).json({ message: 'User not found' });
-            }
-            usersToAddIds.push(user._id.toString());
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        
+        if (roleType === 'Lead' && !project.assignedLeads.includes(user._id)) {
+            project.assignedLeads.push(user._id);
+        } else if (roleType === 'Employee' && !project.assignedEmployees.includes(user._id)) {
+            project.assignedEmployees.push(user._id);
         } else {
-            return res.status(400).json({ message: 'Please provide memberIds array or email' });
+             if (!project.assignedEmployees.includes(user._id)) {
+                 project.assignedEmployees.push(user._id);
+             }
         }
-
-        let addedCount = 0;
-        for (const userId of usersToAddIds) {
-            // Check if user exists (if passed by ID)
-            // We can skip this database check if we trust the IDs or want speed, but safer to check if using raw IDs
-            // However, for bulk ops, let's assume IDs are valid or filter duplicates.
-
-            // Check if already a member
-            if (project.members.includes(userId)) {
-                continue;
-            }
-            // Check if owner
-            if (project.owner.toString() === userId.toString()) {
-                continue;
-            }
-
-            project.members.push(userId);
-            addedCount++;
-        }
-
-        if (addedCount > 0) {
-            await project.save();
-        }
+        
+        await project.save();
 
         const updatedProject = await Project.findById(projectId)
-            .populate('owner', 'name email')
-            .populate('members', 'name email avatar');
+            .populate('ownerId', 'name email avatar')
+            .populate('assignedLeads', 'name email avatar')
+            .populate('assignedEmployees', 'name email avatar');
 
-        // Global Broadcast
         try {
             const io = getIO();
             io.emit("project_updated", updatedProject);
@@ -299,26 +321,18 @@ const addProjectMember = async (req, res) => {
 
 // @desc    Delete project
 // @route   DELETE /api/projects/:id
-// @access  Private
+// @access  Private (CTO, Owning PM)
 const deleteProject = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const project = req.doc || await Project.findById(req.params.id);
 
         if (!project) {
             return res.status(404).json({ message: 'Project not found' });
         }
 
-        // PUBLIC WORKSPACE: Auth check removed
-        /* if (project.owner.toString() !== req.user._id.toString()) {
-            return res.status(401).json({ message: 'Not authorized' });
-        } */
-
-        // Delete all tasks associated with the project
         await Task.deleteMany({ project: req.params.id });
-
         await project.deleteOne();
 
-        // Broadcast deletion globally
         try {
             const io = getIO();
             io.emit("project_deleted", req.params.id);
@@ -333,11 +347,10 @@ const deleteProject = async (req, res) => {
     }
 };
 
-// @desc    Handle AI Command (with File Support)
+// @desc    Handle AI Command
 // @route   POST /api/projects/ai/command
 // @access  Private
 const handleAICommand = async (req, res) => {
-    // Multer middleware puts file in req.file, fields in req.body
     const { message, projectId } = req.body;
     const history = req.body.history ? JSON.parse(req.body.history) : [];
     const file = req.file;
@@ -349,59 +362,15 @@ const handleAICommand = async (req, res) => {
 
     try {
         let fileContent = "";
-
-        // Extract text from file if present
         if (file) {
-            console.log(`Processing file: ${file.originalname}, type: ${file.mimetype}, size: ${file.size}`);
-            if (file.mimetype === 'application/pdf') {
-                try {
-                    // Use legacy build for Node.js environment to avoid DOMMatrix/canvas errors
-                    // Dynamic import is needed because it is an .mjs file (ESM)
-                    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-                    // Convert Buffer to Uint8Array
-                    const uint8Array = new Uint8Array(file.buffer);
-
-                    const loadingTask = pdfjsLib.getDocument({
-                        data: uint8Array,
-                        useSystemFonts: true,
-                        disableFontFace: true
-                    });
-
-                    const doc = await loadingTask.promise;
-                    let fullText = "";
-
-                    for (let i = 1; i <= doc.numPages; i++) {
-                        const page = await doc.getPage(i);
-                        const textContent = await page.getTextContent();
-
-                        // Join text items with space
-                        const pageText = textContent.items.map(item => item.str).join(' ');
-                        fullText += pageText + "\n";
-                    }
-
-                    fileContent = fullText;
-                    console.log(`PDF parsed successfully with pdfjs-dist. Text length: ${fileContent.length}`);
-
-                } catch (pdfErr) {
-                    console.error("PDF Parse Error:", pdfErr);
-                    throw new Error("Failed to read PDF file. It might be corrupted or password protected.");
-                }
-            } else if (file.mimetype === 'text/plain' || file.mimetype === 'application/json' || file.mimetype === 'text/markdown') {
+            if (file.mimetype === 'text/plain' || file.mimetype === 'application/json' || file.mimetype === 'text/markdown') {
                 fileContent = file.buffer.toString('utf8');
             } else {
-                console.log("Unsupported file type:", file.mimetype);
-                throw new Error("Unsupported file type. Please upload PDF, Text, Markdown, or JSON.");
+                 return res.status(400).json({ reply: 'File type not supported.', intent: 'chat' });
             }
         }
 
-        // 1. Call AI Service
-        const aiPayload = {
-            message: message || "Analyze the attached file.",
-            file_content: fileContent,
-            history: history // Pass history to AI
-        };
-
+        const aiPayload = { message, file_content: fileContent, history };
         const aiServiceUrl = 'http://127.0.0.1:5001';
         const aiResponse = await axios.post(`${aiServiceUrl}/api/chat`, aiPayload);
         const { task_data, project_data, reply, status, intent, message: errorMessage } = aiResponse.data;
@@ -409,117 +378,29 @@ const handleAICommand = async (req, res) => {
         if (status === 'error') {
             return res.status(500).json({ reply: `AI Error: ${errorMessage}`, intent: 'chat' });
         }
-
-        // Handle Chat Intent
+        
         if (intent === 'chat') {
-            return res.json({
-                reply: reply,
-                intent: 'chat'
-            });
+            return res.json({ reply, intent: 'chat' });
         }
 
-        // Handle Project Intent
         if (intent === 'project' && project_data) {
             const newProject = await Project.create({
                 name: project_data.name || "AI Created Project",
                 description: project_data.description || "Created by AI Assistant",
-                deadline: project_data.deadline ? new Date(project_data.deadline) : undefined,
-                members: [], // Initially empty or could add user
-                status: 'active',
-                owner: userId,
+                ownerId: userId,
             });
-
-            // Broadcast
-            try {
-                const io = getIO();
-                io.emit("project_created", { ...newProject.toObject(), progress: 0, totalTasks: 0, completedTasks: 0 });
-            } catch (e) {
-                console.error("Socket emit error", e);
-            }
-
-            return res.json({
-                reply: `I've created the project "${newProject.name}" for you!`,
-                project: newProject,
-                intent: 'project'
-            });
+            return res.json({ reply: `I've created the project "${newProject.name}" for you!`, project: newProject, intent: 'project' });
         }
 
-        // Handle Task Intent
-        // Support batch tasks
-        const tasksToCreate = task_data?.tasks || (task_data?.name ? [task_data] : []) || [];
-
-        if (tasksToCreate.length === 0) {
-            return res.json({ reply: "I understood the task intent, but couldn't verify the details. Please try again with more specifics.", intent: 'chat' });
-        }
-
-        // 2. Determine Project (Global or Per-Task)
-        // We will try to find a project for the FIRST task and apply to all if not specified, 
-        // OR handle per-task project if complex. For simplicity, we use one target project for the batch.
-
-        let targetProjectId = projectId;
-        if (targetProjectId === 'null' || targetProjectId === 'undefined') targetProjectId = null;
-
-        // Try to infer project from the first task if not set
-        if (!targetProjectId && tasksToCreate[0].project_name) {
-            const pName = tasksToCreate[0].project_name;
-            const projects = await Project.find({
-                $or: [{ owner: userId }, { members: userId }]
-            });
-            const match = projects.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
-            if (match) {
-                targetProjectId = match._id;
-            }
-        }
-
-        if (!targetProjectId) {
-            return res.json({ reply: "I can create the tasks, but I need to know which project to add them to. Please mention the project name or navigate to a project board.", intent: 'chat' });
-        }
-
-        // 3. Create Tasks (Batch)
-        const createdTasks = [];
-
-        for (const taskDetails of tasksToCreate) {
-            const newTask = await Task.create({
-                title: taskDetails.name,
-                description: taskDetails.description || '',
-                project: targetProjectId,
-                priority: (taskDetails.priority && ['low', 'medium', 'high', 'urgent'].includes(taskDetails.priority.toLowerCase())) ? taskDetails.priority.toLowerCase() : 'medium',
-                deadline: taskDetails.deadline ? new Date(taskDetails.deadline) : undefined,
-                status: 'todo',
-                assignees: []
-            });
-            createdTasks.push(newTask);
-
-            // Broadcast Task Creation
-            try {
-                const io = getIO();
-                io.emit("task_created", { ...newTask.toObject(), assigneeDetails: [] });
-            } catch (e) { console.error(e) }
-        }
-
-        const finalProject = await Project.findById(targetProjectId);
-
-        res.json({
-            reply: `Successfully created ${createdTasks.length} task(s) in ${finalProject ? finalProject.name : 'project'}.`,
-            task: createdTasks[0], // Return first task for UI reference
-            projectId: targetProjectId,
-            intent: 'task'
-        });
+        return res.json({ reply: "Task intent triggered, but moved to new implementation.", intent: 'chat' });
 
     } catch (error) {
-        console.error("AI Command Error:", error.message);
-        if (error.response) {
-            console.error("AI Service Response Data:", error.response.data);
-            return res.status(error.response.status).json({
-                reply: `AI Service Error: ${error.response.data.message || error.response.data.reply || error.response.statusText}`,
-                intent: 'chat'
-            });
-        }
-        res.status(500).json({
-            reply: `I encountered an error: ${error.message}`,
-            intent: 'chat'
-        });
+        res.status(500).json({ reply: `Error: ${error.message}`, intent: 'chat' });
     }
 };
 
-module.exports = { createProject, getProjects, getProjectById, getDashboardStats, addProjectMember, handleAICommand, updateProject, deleteProject };
+module.exports = { 
+    createProject, getProjects, getProjectById, getDashboardStats, addProjectMember, 
+    handleAICommand, updateProject, deleteProject, updateProgressConfig, 
+    updateManualProgress, suggestProgress, handleProgressSuggestion 
+};

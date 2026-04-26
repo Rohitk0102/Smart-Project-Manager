@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -5,12 +6,14 @@ import { SiSlack } from 'react-icons/si';
 import { HiOutlineMail, HiUserGroup, HiCloud } from 'react-icons/hi';
 import { MdEmail } from 'react-icons/md';
 import { RxDashboard } from 'react-icons/rx';
-import { FiCheckSquare, FiCalendar, FiUsers, FiSettings, FiLogOut, FiSun, FiMoon, FiLayers, FiAward } from 'react-icons/fi';
+import { FiCheckSquare, FiCalendar, FiUsers, FiSettings, FiLogOut, FiSun, FiMoon, FiLayers, FiAward, FiUserPlus } from 'react-icons/fi';
+import GiveAccessModal from './GiveAccessModal';
 
 const Sidebar = () => {
     const { logout, user } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const location = useLocation();
+    const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
     const NavLink = ({ to, icon: Icon, label }) => {
         const isActive = location.pathname === to;
@@ -48,7 +51,8 @@ const Sidebar = () => {
     );
 
     return (
-        <aside className="w-16 md:w-72 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-xl border-r border-slate-200 dark:border-white/5 flex flex-col h-screen sticky top-0 z-50 transition-colors duration-300">
+        <>
+        <aside className="w-16 md:w-72 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-xl border-r border-slate-200 dark:border-white/5 flex flex-col h-screen sticky top-0 z-40 transition-colors duration-300">
             {/* Logo Section */}
             <div className="h-24 flex items-center px-8 border-b border-slate-200 dark:border-white/5 relative overflow-hidden">
                 {/* Ambient background glow */}
@@ -76,10 +80,35 @@ const Sidebar = () => {
                 <p className="px-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 hidden md:block">Main Menu</p>
 
                 <NavLink to="/" icon={RxDashboard} label="Dashboard" />
+                <NavLink to="/people" icon={FiUsers} label="People" />
                 <NavLink to="/my-tasks" icon={FiCheckSquare} label="My Tasks" />
                 <NavLink to="/calendar" icon={FiCalendar} label="Calendar" />
                 <NavLink to="/team" icon={FiUsers} label="Team Members" />
                 <NavLink to="/leaderboard" icon={FiAward} label="Leaderboard" />
+
+                {(user?.role === 'CTO' || user?.role === 'PM') && (
+                    <div className="mt-4 px-2 hidden md:block">
+                        <button 
+                            onClick={() => setIsInviteModalOpen(true)}
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl font-bold transition-all shadow-sm"
+                        >
+                            <FiUserPlus size={16} />
+                            Give Access
+                        </button>
+                    </div>
+                )}
+                
+                {(user?.role === 'CTO' || user?.role === 'PM') && (
+                    <div className="mt-4 flex justify-center md:hidden">
+                        <button 
+                            onClick={() => setIsInviteModalOpen(true)}
+                            className="p-3 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 rounded-xl"
+                            title="Give Access"
+                        >
+                            <FiUserPlus size={18} />
+                        </button>
+                    </div>
+                )}
 
                 <div className="my-8 border-t border-slate-200 dark:border-white/5 mx-2"></div>
 
@@ -119,6 +148,9 @@ const Sidebar = () => {
                 </button>
             </div>
         </aside>
+        
+        <GiveAccessModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} />
+        </>
     );
 };
 

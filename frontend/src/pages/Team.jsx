@@ -40,6 +40,7 @@ const Team = () => {
     }, []);
 
     const getInitials = (name) => {
+        if (!name) return '?';
         return name
             .split(' ')
             .map(n => n[0])
@@ -73,7 +74,7 @@ const Team = () => {
     );
 
     return (
-        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#050505] min-h-screen">
+        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#050505] h-full relative">
             <motion.header
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -142,16 +143,16 @@ const Team = () => {
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <div className="w-12 h-12 rounded-full ring-2 ring-amber-500/50 p-0.5">
-                                                {project.owner.avatar ? (
-                                                    <img src={project.owner.avatar} alt={project.owner.name} className="w-full h-full rounded-full object-cover" />
+                                                {project.ownerId?.avatar ? (
+                                                    <img src={project.ownerId.avatar} alt={project.ownerId.name} className="w-full h-full rounded-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                                                        {getInitials(project.owner.name)}
+                                                        {getInitials(project.ownerId?.name)}
                                                     </div>
                                                 )}
                                             </div>
                                             <div>
-                                                <h4 className="text-slate-900 dark:text-white font-bold">{project.owner.name}</h4>
+                                                <h4 className="text-slate-900 dark:text-white font-bold">{project.ownerId?.name || 'Unknown'}</h4>
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] uppercase font-bold tracking-wider">
                                                     Project Lead
                                                 </span>
@@ -159,14 +160,16 @@ const Team = () => {
                                         </div>
                                         <div className="mt-auto pt-4 border-t border-amber-200 dark:border-amber-500/20 flex justify-between items-center">
                                             <span className="text-xs text-amber-700/60 dark:text-amber-400/60 font-medium">Full Access</span>
-                                            <a href={`mailto:${project.owner.email}`} className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 transition-colors p-1 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40">
-                                                <FiMail />
-                                            </a>
+                                            {project.ownerId?.email && (
+                                                <a href={`mailto:${project.ownerId.email}`} className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 transition-colors p-1 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                                                    <FiMail />
+                                                </a>
+                                            )}
                                         </div>
                                     </div>
 
                                     {/* Members Cards */}
-                                    {project.members.map(member => (
+                                    {((project.assignedLeads || []).concat(project.assignedEmployees || [])).map(member => (
                                         <div key={member._id} className="relative p-5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 hover:border-indigo-500/30 flex flex-col gap-4 group/card hover:-translate-y-1 transition-transform duration-300">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-12 h-12 rounded-full p-0.5">
@@ -194,8 +197,8 @@ const Team = () => {
                                         </div>
                                     ))}
 
-                                    {/* Add Member Placeholer (Only if owner) */}
-                                    {user._id === project.owner._id && (
+                                    {/* Add Member Placeholder (Only if owner or PM) */}
+                                    {(user?.role === 'CTO' || user?._id === project.ownerId?._id) && (
                                         <button
                                             onClick={() => {
                                                 setActiveProjectForAdd(project._id);
@@ -246,9 +249,10 @@ const Team = () => {
 
                                         const availableUsers = allSystemUsers.filter(u =>
                                             // Exclude owner
-                                            (project.owner?._id !== u._id) &&
+                                            (project.ownerId?._id !== u._id) &&
                                             // Exclude existing members
-                                            !project.members?.some(m => m._id === u._id)
+                                            !(project.assignedLeads || []).some(m => m._id === u._id) &&
+                                            !(project.assignedEmployees || []).some(m => m._id === u._id)
                                         );
 
                                         if (availableUsers.length === 0) {
